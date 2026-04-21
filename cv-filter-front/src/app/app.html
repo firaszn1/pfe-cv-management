@@ -1,0 +1,62 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <div class="brand-logo">CV</div>
+        <div>
+          <h1>CV SmartMatch</h1>
+          <p>HR Intelligence Platform</p>
+        </div>
+      </div>
+
+      <nav class="nav-links">
+        <a routerLink="/dashboard" routerLinkActive="active">
+          <span class="nav-icon">◫</span>
+          <span>Dashboard</span>
+        </a>
+
+        <a routerLink="/upload" routerLinkActive="active">
+          <span class="nav-icon">⬆</span>
+          <span>Upload CV</span>
+        </a>
+
+        <a routerLink="/candidates" routerLinkActive="active">
+          <span class="nav-icon">◉</span>
+          <span>Candidates</span>
+        </a>
+      </nav>
+    </div>
+
+    <div class="user-box">
+      <p class="user-label">Connected as</p>
+      <h3>{{ username }}</h3>
+      <p class="roles">{{ roles.join(' • ') }}</p>
+
+      <div class="theme-box">
+        <div>
+          <p class="theme-title">Theme</p>
+          <span class="theme-subtitle">{{ theme === 'dark' ? 'Dark mode' : 'Light mode' }}</span>
+        </div>
+
+        <button class="theme-toggle" (click)="toggleTheme()">
+          {{ theme === 'dark' ? '☀' : '☾' }}
+        </button>
+      </div>
+
+      <button class="logout-btn" (click)="logout()">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="topbar">
+      <div>
+        <h2>Welcome back</h2>
+        <p>Manage candidates, AI search, and recruitment workflows in one polished workspace.</p>
+      </div>
+    </div>
+
+    <section class="page-wrapper">
+      <router-outlet></router-outlet>
+    </section>
+  </main>
+</div>

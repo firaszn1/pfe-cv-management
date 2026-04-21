@@ -1,0 +1,35 @@
+<div class="upload-page">
+  <div class="header-card">
+    <p class="eyebrow">Candidate Intake</p>
+    <h2>Upload a new CV</h2>
+    <p>
+      Import PDF or DOCX resumes and let the platform extract, structure,
+      and store candidate data automatically.
+    </p>
+  </div>
+
+  <div class="upload-card">
+    <div class="upload-zone">
+      <div class="upload-icon">☁</div>
+      <h3>Select a resume</h3>
+      <p>Supported formats: PDF, DOCX</p>
+
+      <input type="file" (change)="onFileSelected($event)" accept=".pdf,.docx" />
+
+      @if (selectedFile) {
+        <div class="file-preview">
+          <strong>Selected file</strong>
+          <span>{{ selectedFile.name }}</span>
+        </div>
+      }
+
+      <button class="upload-btn" (click)="upload()">Upload CV</button>
+    </div>
+
+    @if (message) {
+      <div class="message-box">
+        {{ message }}
+      </div>
+    }
+  </div>
+</div>

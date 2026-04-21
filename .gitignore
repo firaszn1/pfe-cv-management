@@ -1,0 +1,45 @@
+# ─── Angular (frontend) ───────────────────────────
+cv-filter-front/dist/
+cv-filter-front/tmp/
+cv-filter-front/out-tsc/
+cv-filter-front/node_modules/
+cv-filter-front/.angular/cache/
+cv-filter-front/coverage/
+cv-filter-front/.sass-cache/
+
+# ─── Spring Boot (backend) ────────────────────────
+cv-filter-back/target/
+cv-filter-back/*.jar
+cv-filter-back/*.war
+cv-filter-back/.mvn/
+
+# ─── Secrets & Environment ────────────────────────
+.env
+*.env
+**/application-local.properties
+**/application-secret.properties
+
+# ─── IDEs ─────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.sublime-workspace
+.classpath
+.project
+.settings/
+
+# ─── OS Files ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Logs ─────────────────────────────────────────
+*.log
+npm-debug.log
+yarn-error.log
+
+# Eclipse IDE
+**/.metadata/
+**/.classpath
+**/.project
+**/.settings/
+**/cvfilterback/.gitignore

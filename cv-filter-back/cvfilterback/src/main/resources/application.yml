@@ -1,0 +1,22 @@
+server:
+  port: 8081
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/cvdb
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/cv-realm
+
+ollama:
+  base-url: http://localhost:11434
+  embedding-model: embeddinggemma

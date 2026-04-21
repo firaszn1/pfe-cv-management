@@ -1,0 +1,91 @@
+<div class="dashboard-page">
+  <div class="hero-card">
+    <div class="hero-icon">✦</div>
+    <div>
+      <p class="eyebrow">Recruitment Intelligence</p>
+      <h2>Smart hiring starts here</h2>
+      <p class="hero-text">
+        Track candidate flow, seniority distribution, and the most demanded skills
+        across your recruitment database.
+      </p>
+    </div>
+  </div>
+
+  @if (stats) {
+    <div class="stats-grid">
+      <div class="stat-card primary">
+        <div class="stat-icon">◎</div>
+        <p>Total Candidates</p>
+        <h3>{{ stats.totalCandidates }}</h3>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">J</div>
+        <p>Junior Profiles</p>
+        <h3>{{ stats.juniorCount }}</h3>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">M</div>
+        <p>Mid Profiles</p>
+        <h3>{{ stats.midCount }}</h3>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">S</div>
+        <p>Senior Profiles</p>
+        <h3>{{ stats.seniorCount }}</h3>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Top Skills</h3>
+          <span>Most frequent skills in your CV database</span>
+        </div>
+
+        @if (stats.topSkills.length === 0) {
+          <p class="muted">No skills available yet.</p>
+        }
+
+        @for (item of stats.topSkills; track item.skill) {
+          <div class="skill-row">
+            <div class="skill-label">{{ item.skill }}</div>
+            <div class="skill-bar-wrap">
+              <div class="skill-bar" [style.width.%]="getBarWidth(item.count)"></div>
+            </div>
+            <div class="skill-count">{{ item.count }}</div>
+          </div>
+        }
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Quick Insight</h3>
+          <span>Simple overview of your current dataset</span>
+        </div>
+
+        <div class="insight-box">
+          <h4>AI Search Tip</h4>
+          <p>
+            Compare smart search results with manual filters to see whether semantic ranking
+            is truly helping HR decisions.
+          </p>
+        </div>
+
+        <div class="insight-box secondary">
+          <h4>Data Quality Tip</h4>
+          <p>
+            Editing candidate profiles after upload improves the quality of both filtering and
+            semantic search results.
+          </p>
+        </div>
+      </div>
+    </div>
+  } @else {
+    <div class="panel">
+      <p class="muted">Loading dashboard...</p>
+    </div>
+  }
+</div>
