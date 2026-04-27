@@ -14,9 +14,27 @@ export interface CandidateResponse {
   seniorityLevel: string;
   currentJobTitle: string;
   highestDegree: string;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
+  portfolioUrl?: string | null;
+  educationEntries: string[];
+  experienceEntries: string[];
+  projectEntries: string[];
+  certifications: string[];
   cvFileName: string;
+  alfrescoNodeId?: string | null;
+  alfrescoFileUrl?: string | null;
   createdAt: string;
   aiMatchScore: number | null;
+  scoreBreakdown?: ScoreBreakdownResponse | null;
+}
+
+export interface ScoreBreakdownResponse {
+  globalScore: number;
+  skillsMatch: number;
+  experienceMatch: number;
+  seniorityMatch: number;
+  titleMatch: number;
 }
 
 export interface UploadCandidateResponse {
@@ -50,6 +68,38 @@ export interface SmartSearchRequest {
   query: string;
 }
 
+export interface InterviewKitResponse {
+  candidateId: string;
+  candidateName: string;
+  seniorityLevel: string;
+  jobTitle: string;
+  technical: string[];
+  project: string[];
+  hr: string[];
+  clarification: string[];
+}
+
+export interface JobMatchRequest {
+  description: string;
+}
+
+export interface JobMatchResponse {
+  extractedSkills: string[];
+  seniority: string | null;
+  keywords: string[];
+  candidates: CandidateResponse[];
+}
+
+export interface CandidateCompareResponse {
+  candidates: CandidateResponse[];
+  comparison: {
+    skillsOverlap: string[];
+    experienceDifference: string;
+    strengths: string[];
+    weaknesses: string[];
+  };
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -79,6 +129,14 @@ export class CandidateService {
     return this.http.delete<void>(`${this.apiUrl}/admin/candidates/${id}`);
   }
 
+  viewCv(id: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/hr/candidates/${id}/cv/view`, { responseType: 'blob' });
+  }
+
+  downloadCv(id: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/hr/candidates/${id}/cv/download`, { responseType: 'blob' });
+  }
+
   filterCandidates(request: CandidateFilterRequest): Observable<CandidateResponse[]> {
     return this.http.post<CandidateResponse[]>(`${this.apiUrl}/hr/candidates/filter`, request);
   }
@@ -89,5 +147,17 @@ export class CandidateService {
 
   getDashboardStats(): Observable<DashboardStatsResponse> {
     return this.http.get<DashboardStatsResponse>(`${this.apiUrl}/hr/dashboard/stats`);
+  }
+
+  generateInterviewKit(candidateId: string): Observable<InterviewKitResponse> {
+    return this.http.post<InterviewKitResponse>(`${this.apiUrl}/interview-kit/${candidateId}`, {});
+  }
+
+  matchJobDescription(request: JobMatchRequest): Observable<JobMatchResponse> {
+    return this.http.post<JobMatchResponse>(`${this.apiUrl}/job-match`, request);
+  }
+
+  compareCandidates(candidateIds: string[]): Observable<CandidateCompareResponse> {
+    return this.http.post<CandidateCompareResponse>(`${this.apiUrl}/candidates/compare`, { candidateIds });
   }
 }

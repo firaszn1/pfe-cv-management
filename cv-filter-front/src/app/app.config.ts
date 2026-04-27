@@ -14,7 +14,7 @@ import { authInterceptor } from './interceptors/auth.interceptor';
 function initializeKeycloak() {
   return () =>
     keycloak.init({
-      onLoad: 'login-required',
+      onLoad: 'check-sso',
       checkLoginIframe: false
     });
 }

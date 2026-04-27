@@ -50,8 +50,26 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
             </div>
 
             <div class="field">
+              <label>LinkedIn</label>
+              <input [(ngModel)]="candidate.linkedinUrl" placeholder="https://linkedin.com/in/..." />
+            </div>
+
+            <div class="field">
+              <label>GitHub</label>
+              <input [(ngModel)]="candidate.githubUrl" placeholder="https://github.com/..." />
+            </div>
+
+            <div class="field field-wide">
+              <label>Portfolio</label>
+              <input [(ngModel)]="candidate.portfolioUrl" placeholder="https://..." />
+            </div>
+
+            <div class="field">
               <label>Experience</label>
-              <input type="number" step="0.1" [(ngModel)]="candidate.yearsOfExperience" />
+              <div class="experience-inputs">
+                <input type="number" min="0" step="1" [(ngModel)]="experienceYears" placeholder="Years" />
+                <input type="number" min="0" max="11" step="1" [(ngModel)]="experienceMonths" placeholder="Months" />
+              </div>
             </div>
 
             <div class="field">
@@ -71,6 +89,26 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
             <div class="field field-wide">
               <label>Languages (comma separated)</label>
               <input [(ngModel)]="languagesText" />
+            </div>
+
+            <div class="field field-wide">
+              <label>Education Details (one per line)</label>
+              <textarea [(ngModel)]="educationText"></textarea>
+            </div>
+
+            <div class="field field-wide">
+              <label>Experience Details (one per line)</label>
+              <textarea [(ngModel)]="experienceText"></textarea>
+            </div>
+
+            <div class="field field-wide">
+              <label>Projects (one per line)</label>
+              <textarea [(ngModel)]="projectsText"></textarea>
+            </div>
+
+            <div class="field field-wide">
+              <label>Certifications (one per line)</label>
+              <textarea [(ngModel)]="certificationsText"></textarea>
             </div>
           </div>
 
@@ -177,7 +215,8 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
     }
 
     .field input,
-    .field select {
+    .field select,
+    .field textarea {
       width: 100%;
       padding: 14px 16px;
       border-radius: 14px;
@@ -185,6 +224,18 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
       background: var(--surface-2);
       color: var(--text);
       outline: none;
+    }
+
+    .field textarea {
+      min-height: 110px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    .experience-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
     }
 
     .field-wide {
@@ -256,6 +307,12 @@ export class EditCandidateComponent {
   candidate: CandidateResponse | null = null;
   skillsText = '';
   languagesText = '';
+  educationText = '';
+  experienceText = '';
+  projectsText = '';
+  certificationsText = '';
+  experienceYears: number | null = null;
+  experienceMonths: number | null = null;
   message = '';
 
   ngOnInit(): void {
@@ -271,6 +328,11 @@ export class EditCandidateComponent {
         this.candidate = res;
         this.skillsText = res.skills.join(', ');
         this.languagesText = res.languages.join(', ');
+        this.educationText = (res.educationEntries || []).join('\n');
+        this.experienceText = (res.experienceEntries || []).join('\n');
+        this.projectsText = (res.projectEntries || []).join('\n');
+        this.certificationsText = (res.certifications || []).join('\n');
+        this.setExperienceFields(res.yearsOfExperience);
       },
       error: () => this.message = 'Could not load candidate'
     });
@@ -289,6 +351,14 @@ export class EditCandidateComponent {
       .map(v => v.trim())
       .filter(v => v.length > 0);
 
+    this.candidate.yearsOfExperience = this.totalExperience();
+    this.candidate.educationEntries = this.linesToList(this.educationText);
+    this.candidate.experienceEntries = this.linesToList(this.experienceText);
+    this.candidate.projectEntries = this.linesToList(this.projectsText);
+    this.candidate.certifications = this.linesToList(this.certificationsText);
+    delete (this.candidate as Partial<CandidateResponse>).alfrescoNodeId;
+    delete (this.candidate as Partial<CandidateResponse>).alfrescoFileUrl;
+
     this.candidateService.updateCandidate(this.candidate.id, this.candidate).subscribe({
       next: () => {
         this.message = 'Candidate updated successfully';
@@ -300,5 +370,24 @@ export class EditCandidateComponent {
 
   goBack(): void {
     this.router.navigate(['/candidates']);
+  }
+
+  private setExperienceFields(value: number | null | undefined): void {
+    const totalMonths = Math.max(0, Math.round((Number(value) || 0) * 12));
+    this.experienceYears = Math.floor(totalMonths / 12);
+    this.experienceMonths = totalMonths % 12;
+  }
+
+  private totalExperience(): number {
+    const years = Math.max(0, Number(this.experienceYears) || 0);
+    const months = Math.max(0, Math.min(11, Number(this.experienceMonths) || 0));
+    return Math.round((years + months / 12) * 100) / 100;
+  }
+
+  private linesToList(value: string): string[] {
+    return value
+      .split(/\r?\n/)
+      .map(v => v.trim())
+      .filter(v => v.length > 0);
   }
 }

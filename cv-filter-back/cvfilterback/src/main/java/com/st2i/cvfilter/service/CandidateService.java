@@ -22,6 +22,7 @@ import com.st2i.cvfilter.dto.UploadCandidateResponse;
 import com.st2i.cvfilter.exception.ResourceNotFoundException;
 import com.st2i.cvfilter.model.Candidate;
 import com.st2i.cvfilter.repository.CandidateRepository;
+import com.st2i.cvfilter.service.CandidateScoringService.QuerySignals;
 
 @Service
 public class CandidateService {
@@ -32,17 +33,23 @@ public class CandidateService {
     private final CvTextExtractorService cvTextExtractorService;
     private final CandidateParserService candidateParserService;
     private final OllamaEmbeddingService ollamaEmbeddingService;
+    private final CandidateScoringService candidateScoringService;
+    private final AlfrescoService alfrescoService;
 
     public CandidateService(
             CandidateRepository candidateRepository,
             CvTextExtractorService cvTextExtractorService,
             CandidateParserService candidateParserService,
-            OllamaEmbeddingService ollamaEmbeddingService
+            OllamaEmbeddingService ollamaEmbeddingService,
+            CandidateScoringService candidateScoringService,
+            AlfrescoService alfrescoService
     ) {
         this.candidateRepository = candidateRepository;
         this.cvTextExtractorService = cvTextExtractorService;
         this.candidateParserService = candidateParserService;
         this.ollamaEmbeddingService = ollamaEmbeddingService;
+        this.candidateScoringService = candidateScoringService;
+        this.alfrescoService = alfrescoService;
     }
 
     public UploadCandidateResponse uploadCv(MultipartFile file) throws IOException {
@@ -56,10 +63,14 @@ public class CandidateService {
                 extractedText
         );
 
+        String alfrescoNodeId = alfrescoService.uploadFile(file);
+        candidate.setAlfrescoNodeId(alfrescoNodeId);
         candidate.setCreatedAt(LocalDateTime.now());
         candidate.setEmbedding(ollamaEmbeddingService.createEmbedding(buildSearchableText(candidate)));
 
         Candidate saved = candidateRepository.save(candidate);
+        saved.setAlfrescoFileUrl(cvDownloadUrl(saved.getId()));
+        saved = candidateRepository.save(saved);
 
         UploadCandidateResponse response = new UploadCandidateResponse();
         response.setCandidateId(saved.getId());
@@ -82,6 +93,21 @@ public class CandidateService {
         return toResponse(candidate);
     }
 
+    public AlfrescoDocument downloadOriginalCv(String id) {
+        Candidate candidate = candidateRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidate not found"));
+
+        if (candidate.getAlfrescoNodeId() == null || candidate.getAlfrescoNodeId().isBlank()) {
+            throw new ResourceNotFoundException("Original CV document not found in Alfresco");
+        }
+
+        return alfrescoService.downloadFile(
+                candidate.getAlfrescoNodeId(),
+                candidate.getCvFileName(),
+                candidate.getContentType()
+        );
+    }
+
     public CandidateResponse updateCandidate(String id, Candidate updated) {
         Candidate existing = candidateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate not found"));
@@ -96,6 +122,13 @@ public class CandidateService {
         existing.setSeniorityLevel(updated.getSeniorityLevel());
         existing.setCurrentJobTitle(updated.getCurrentJobTitle());
         existing.setHighestDegree(updated.getHighestDegree());
+        existing.setLinkedinUrl(updated.getLinkedinUrl());
+        existing.setGithubUrl(updated.getGithubUrl());
+        existing.setPortfolioUrl(updated.getPortfolioUrl());
+        existing.setEducationEntries(updated.getEducationEntries());
+        existing.setExperienceEntries(updated.getExperienceEntries());
+        existing.setProjectEntries(updated.getProjectEntries());
+        existing.setCertifications(updated.getCertifications());
 
         existing.setEmbedding(ollamaEmbeddingService.createEmbedding(buildSearchableText(existing)));
 
@@ -175,14 +208,23 @@ public class CandidateService {
         }
 
         String query = normalizeText(request.getQuery());
+        QuerySignals signals = candidateScoringService.extractSignals(query);
+        List<Candidate> candidates = candidateRepository.findAll().stream()
+                .filter(candidate -> candidateScoringService.matchesRequiredSeniority(candidate, signals))
+                .collect(Collectors.toList());
+
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+
         List<Double> queryEmbedding = ollamaEmbeddingService.createEmbedding(query);
 
         if (queryEmbedding.isEmpty()) {
-            return getAllCandidates();
+            return candidates.stream()
+                    .map(this::toResponse)
+                    .limit(10)
+                    .collect(Collectors.toList());
         }
-
-        QuerySignals signals = extractQuerySignals(query);
-        List<Candidate> candidates = candidateRepository.findAll();
 
         for (Candidate candidate : candidates) {
             if (candidate.getEmbedding() == null || candidate.getEmbedding().isEmpty()) {
@@ -195,22 +237,13 @@ public class CandidateService {
                 .map(candidate -> {
                     double semanticSimilarity = cosineSimilarity(queryEmbedding, candidate.getEmbedding());
                     double semanticPercent = convertSimilarityToPercent(semanticSimilarity);
-                    double bonusPercent = computeHybridBonus(candidate, signals);
+                    double structuredPercent = candidateScoringService.score(candidate, signals).getGlobalScore();
 
-                    // Honest score:
-                    // semantic gives the base relevance
-                    // bonus rewards exact HR-relevant matches
-                    double rawScore = (semanticPercent * 0.60) + (bonusPercent * 0.40);
-
-                    // Penalize weak/no-signal matches so system stops "lying"
-                    if (bonusPercent < 15.0) {
-                        rawScore *= 0.65;
-                    } else if (bonusPercent < 30.0) {
-                        rawScore *= 0.80;
-                    }
+                    double rawScore = (semanticPercent * 0.35) + (structuredPercent * 0.65);
 
                     return new ScoredCandidate(candidate, rawScore);
                 })
+                .filter(candidate -> candidate.getRawScore() >= 45.0)
                 .sorted(Comparator.comparingDouble(ScoredCandidate::getRawScore).reversed())
                 .limit(10)
                 .collect(Collectors.toList());
@@ -219,6 +252,7 @@ public class CandidateService {
                 .map(item -> {
                     CandidateResponse response = toResponse(item.getCandidate());
                     response.setAiMatchScore(roundScore(item.getRawScore()));
+                    response.setScoreBreakdown(candidateScoringService.score(item.getCandidate(), signals));
                     return response;
                 })
                 .collect(Collectors.toList());
@@ -273,109 +307,22 @@ public class CandidateService {
         response.setSeniorityLevel(candidate.getSeniorityLevel());
         response.setCurrentJobTitle(candidate.getCurrentJobTitle());
         response.setHighestDegree(candidate.getHighestDegree());
+        response.setLinkedinUrl(candidate.getLinkedinUrl());
+        response.setGithubUrl(candidate.getGithubUrl());
+        response.setPortfolioUrl(candidate.getPortfolioUrl());
+        response.setEducationEntries(candidate.getEducationEntries());
+        response.setExperienceEntries(candidate.getExperienceEntries());
+        response.setProjectEntries(candidate.getProjectEntries());
+        response.setCertifications(candidate.getCertifications());
         response.setCvFileName(candidate.getCvFileName());
+        response.setAlfrescoNodeId(candidate.getAlfrescoNodeId());
+        response.setAlfrescoFileUrl(candidate.getAlfrescoFileUrl() == null || candidate.getAlfrescoFileUrl().isBlank()
+                ? cvDownloadUrl(candidate.getId())
+                : candidate.getAlfrescoFileUrl());
         response.setCreatedAt(candidate.getCreatedAt());
         response.setAiMatchScore(null);
+        response.setScoreBreakdown(null);
         return response;
-    }
-
-    private QuerySignals extractQuerySignals(String query) {
-        String q = query.toLowerCase(Locale.ROOT);
-        QuerySignals signals = new QuerySignals();
-
-        if (q.contains("junior")) {
-            signals.seniority = "Junior";
-        } else if (q.contains("mid")) {
-            signals.seniority = "Mid";
-        } else if (q.contains("senior")) {
-            signals.seniority = "Senior";
-        }
-
-        String[] knownSkills = {
-                "java", "react", "angular", "spring boot", "spring", "node", "node.js",
-                "mysql", "sql", "python", "javascript", "typescript", "html", "css", "javafx"
-        };
-
-        for (String skill : knownSkills) {
-            if (q.contains(skill)) {
-                signals.skills.add(skill);
-            }
-        }
-
-        String[] knownTitles = {
-                "frontend developer",
-                "backend developer",
-                "fullstack developer",
-                "full stack developer",
-                "developer",
-                "engineer",
-                "intern",
-                "student",
-                "react specialist",
-                "web software engineer",
-                "frontend",
-                "backend"
-        };
-
-        for (String title : knownTitles) {
-            if (q.contains(title)) {
-                signals.jobTitles.add(title);
-            }
-        }
-
-        return signals;
-    }
-
-    private double computeHybridBonus(Candidate candidate, QuerySignals signals) {
-        double bonus = 0.0;
-
-        if (signals.seniority != null &&
-                candidate.getSeniorityLevel() != null &&
-                candidate.getSeniorityLevel().equalsIgnoreCase(signals.seniority)) {
-            bonus += 35.0;
-        }
-
-        if (candidate.getSkills() != null) {
-            for (String querySkill : signals.skills) {
-                for (String candidateSkill : candidate.getSkills()) {
-                    if (candidateSkill != null &&
-                            candidateSkill.toLowerCase(Locale.ROOT)
-                                    .contains(querySkill.toLowerCase(Locale.ROOT))) {
-                        bonus += 20.0;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (candidate.getCurrentJobTitle() != null) {
-            String candidateTitle = candidate.getCurrentJobTitle().toLowerCase(Locale.ROOT);
-            for (String queryTitle : signals.jobTitles) {
-                if (candidateTitle.contains(queryTitle.toLowerCase(Locale.ROOT))) {
-                    bonus += 28.0;
-                    break;
-                }
-            }
-        }
-
-        if (signals.seniority != null && candidate.getYearsOfExperience() != null) {
-            if ("Senior".equalsIgnoreCase(signals.seniority) && candidate.getYearsOfExperience() >= 5.0) {
-                bonus += 12.0;
-            } else if ("Mid".equalsIgnoreCase(signals.seniority)
-                    && candidate.getYearsOfExperience() >= 2.0
-                    && candidate.getYearsOfExperience() < 5.0) {
-                bonus += 8.0;
-            } else if ("Junior".equalsIgnoreCase(signals.seniority)
-                    && candidate.getYearsOfExperience() < 2.0) {
-                bonus += 8.0;
-            }
-        }
-
-        if (bonus > 100.0) {
-            bonus = 100.0;
-        }
-
-        return bonus;
     }
 
     private double convertSimilarityToPercent(double similarity) {
@@ -393,6 +340,10 @@ public class CandidateService {
 
     private Double roundScore(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private String cvDownloadUrl(String candidateId) {
+        return candidateId == null ? null : "/api/hr/candidates/" + candidateId + "/cv/download";
     }
 
     private void validateFile(MultipartFile file) {
@@ -419,9 +370,12 @@ public class CandidateService {
         append(builder, candidate.getSeniorityLevel());
         append(builder, candidate.getHighestDegree());
         append(builder, candidate.getAddress());
+        append(builder, candidate.getLinkedinUrl());
+        append(builder, candidate.getGithubUrl());
+        append(builder, candidate.getPortfolioUrl());
 
         if (candidate.getYearsOfExperience() != null) {
-            append(builder, candidate.getYearsOfExperience() + " years experience");
+            append(builder, formatExperience(candidate.getYearsOfExperience()) + " experience");
         }
 
         if (candidate.getSkills() != null && !candidate.getSkills().isEmpty()) {
@@ -430,6 +384,18 @@ public class CandidateService {
 
         if (candidate.getLanguages() != null && !candidate.getLanguages().isEmpty()) {
             append(builder, "Languages: " + String.join(", ", candidate.getLanguages()));
+        }
+        if (candidate.getEducationEntries() != null && !candidate.getEducationEntries().isEmpty()) {
+            append(builder, "Education: " + String.join("; ", candidate.getEducationEntries()));
+        }
+        if (candidate.getExperienceEntries() != null && !candidate.getExperienceEntries().isEmpty()) {
+            append(builder, "Experience: " + String.join("; ", candidate.getExperienceEntries()));
+        }
+        if (candidate.getProjectEntries() != null && !candidate.getProjectEntries().isEmpty()) {
+            append(builder, "Projects: " + String.join("; ", candidate.getProjectEntries()));
+        }
+        if (candidate.getCertifications() != null && !candidate.getCertifications().isEmpty()) {
+            append(builder, "Certifications: " + String.join("; ", candidate.getCertifications()));
         }
 
         append(builder, truncate(candidate.getExtractedText(), MAX_EMBED_TEXT_LENGTH));
@@ -441,6 +407,22 @@ public class CandidateService {
         if (value != null && !value.isBlank()) {
             builder.append(value).append("\n");
         }
+    }
+
+    private String formatExperience(Double value) {
+        int totalMonths = (int) Math.max(0, Math.round(value * 12));
+        int years = totalMonths / 12;
+        int months = totalMonths % 12;
+        List<String> parts = new ArrayList<>();
+
+        if (years > 0) {
+            parts.add(years + (years == 1 ? " year" : " years"));
+        }
+        if (months > 0) {
+            parts.add(months + (months == 1 ? " month" : " months"));
+        }
+
+        return parts.isEmpty() ? "less than 1 month" : String.join(" ", parts);
     }
 
     private String truncate(String value, int maxLength) {
@@ -483,12 +465,6 @@ public class CandidateService {
         }
 
         return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-    }
-
-    private static class QuerySignals {
-        private String seniority;
-        private final List<String> skills = new ArrayList<>();
-        private final List<String> jobTitles = new ArrayList<>();
     }
 
     private static class ScoredCandidate {

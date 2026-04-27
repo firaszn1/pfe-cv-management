@@ -24,7 +24,11 @@ public class CandidateParserService {
             "node", "node.js", "docker", "git", "keycloak", "rest", "rest api",
             "hibernate", "jpa", "php", "laravel", "symfony", "bootstrap",
             "tailwind", "kubernetes", "jenkins", "aws", "azure", "linux", "postman",
-            "c", "c++", "c#", ".net", "figma", "uml", "maven", "gradle", "javafx"
+            "c", "c++", "c#", ".net", "figma", "uml", "maven", "gradle", "javafx",
+            "oracle", "postgresql", "postgres", "firebase", "express", "nestjs",
+            "redux", "rxjs", "sass", "spring security", "microservices", "scrum",
+            "agile", "jira", "ci/cd", "gitlab", "github", "machine learning",
+            "deep learning", "pandas", "numpy", "tensorflow", "pytorch"
     );
 
     private static final List<String> KNOWN_LANGUAGES = List.of(
@@ -47,6 +51,8 @@ public class CandidateParserService {
         String address = extractAddress(cleanText);
         String jobTitle = extractCurrentJobTitle(cleanText, fullName);
         Double years = extractYearsOfExperience(cleanText);
+        String linkedinUrl = extractUrl(cleanText, "linkedin.com");
+        String githubUrl = extractUrl(cleanText, "github.com");
 
         Candidate candidate = new Candidate();
         candidate.setFullName(fullName);
@@ -59,6 +65,21 @@ public class CandidateParserService {
         candidate.setSeniorityLevel(determineSeniority(years));
         candidate.setCurrentJobTitle(jobTitle);
         candidate.setHighestDegree(extractHighestDegree(cleanText));
+        candidate.setLinkedinUrl(linkedinUrl);
+        candidate.setGithubUrl(githubUrl);
+        candidate.setPortfolioUrl(extractPortfolioUrl(cleanText, linkedinUrl, githubUrl));
+        candidate.setEducationEntries(extractSectionEntries(cleanText, Set.of(
+                "education", "formation", "parcours academique", "academic background"
+        ), 8));
+        candidate.setExperienceEntries(extractSectionEntries(cleanText, Set.of(
+                "experience", "experiences", "experience professionnelle", "work experience", "employment"
+        ), 10));
+        candidate.setProjectEntries(extractSectionEntries(cleanText, Set.of(
+                "projets", "projects", "experience et projets"
+        ), 10));
+        candidate.setCertifications(extractSectionEntries(cleanText, Set.of(
+                "certifications", "certificats", "certificates", "licenses"
+        ), 8));
         candidate.setCvFileName(fileName);
         candidate.setContentType(contentType);
         candidate.setExtractedText(cleanText);
@@ -285,7 +306,7 @@ public class CandidateParserService {
         Set<String> foundSkills = new LinkedHashSet<>();
 
         for (String skill : KNOWN_SKILLS) {
-            if (normalized.contains(normalizeForComparison(skill))) {
+            if (containsSkill(normalized, skill)) {
                 foundSkills.add(formatWord(skill));
             }
         }
@@ -309,16 +330,19 @@ public class CandidateParserService {
     private Double extractYearsOfExperience(String text) {
         String normalized = normalizeForComparison(text);
 
+        Matcher combinedMatcher = Pattern.compile(
+                "(\\d+(?:[\\.,]\\d+)?)\\s*\\+?\\s*(years|year|ans|an)\\s*(?:and|et)?\\s*(\\d+)?\\s*(mois|months|month)?"
+        ).matcher(normalized);
+        if (combinedMatcher.find()) {
+            double years = parseDecimal(combinedMatcher.group(1));
+            int months = combinedMatcher.group(3) == null ? 0 : Integer.parseInt(combinedMatcher.group(3));
+            return roundExperience(years + (months / 12.0));
+        }
+
         Matcher monthMatcher = Pattern.compile("(\\d+)\\s*(mois|months|month)").matcher(normalized);
         if (monthMatcher.find()) {
             int months = Integer.parseInt(monthMatcher.group(1));
-            return Math.round((months / 12.0) * 10.0) / 10.0;
-        }
-
-        Matcher yearsMatcher = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*\\+?\\s*(years|year|ans|an)")
-                .matcher(normalized);
-        if (yearsMatcher.find()) {
-            return Double.parseDouble(yearsMatcher.group(1));
+            return roundExperience(months / 12.0);
         }
 
         String experienceSection = extractExperienceSection(normalized);
@@ -338,12 +362,20 @@ public class CandidateParserService {
 
                 if (minYear >= 2000 && minYear <= currentYear) {
                     int estimated = currentYear - minYear;
-                    return (double) Math.max(0, Math.min(estimated, 5));
+                    return (double) Math.max(0, estimated);
                 }
             }
         }
 
         return 0.0;
+    }
+
+    private double parseDecimal(String value) {
+        return Double.parseDouble(value.replace(',', '.'));
+    }
+
+    private double roundExperience(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     private String extractExperienceSection(String normalizedText) {
@@ -458,17 +490,147 @@ public class CandidateParserService {
     }
 
     private String extractHighestDegree(String text) {
-        String normalized = normalizeForComparison(text);
+        String education = extractSection(text, Set.of("education", "formation", "parcours academique"));
+        String normalized = normalizeForComparison(education == null || education.isBlank() ? text : education);
 
         if (normalized.contains("phd") || normalized.contains("doctorate")) return "PhD";
-        if (normalized.contains("master") || normalized.contains("mastere")) return "Master";
-        if (normalized.contains("engineer") || normalized.contains("engineering")) return "Engineer";
+        if (normalized.contains("master") || normalized.contains("mastere") || normalized.contains("mast")) return "Master";
+        if (normalized.contains("ingenieur") || normalized.contains("engineer") || normalized.contains("engineering")) return "Engineer";
         if (normalized.contains("licence")) return "Licence";
         if (normalized.contains("bachelor")) return "Bachelor";
+        if (normalized.contains("bts")) return "BTS";
+        if (normalized.contains("dut")) return "DUT";
         if (normalized.contains("technician")) return "Technician";
         if (normalized.contains("technologue")) return "Technologue";
+        if (normalized.contains("baccalaureat") || normalized.contains("baccalauréat")) return "Baccalaureat";
 
         return null;
+    }
+
+    private boolean containsSkill(String normalizedText, String skill) {
+        String normalizedSkill = normalizeForComparison(skill);
+
+        if (normalizedSkill.length() <= 2 || normalizedSkill.contains("+")
+                || normalizedSkill.contains("#") || normalizedSkill.contains(".")) {
+            return Pattern.compile("(^|[^a-z0-9+#.])" + Pattern.quote(normalizedSkill) + "($|[^a-z0-9+#.])")
+                    .matcher(normalizedText)
+                    .find();
+        }
+
+        return Pattern.compile("\\b" + Pattern.quote(normalizedSkill) + "\\b")
+                .matcher(normalizedText)
+                .find();
+    }
+
+    private String extractUrl(String text, String requiredHost) {
+        Matcher matcher = Pattern.compile("(https?://)?(www\\.)?[A-Za-z0-9.-]+\\.[A-Za-z]{2,}[^\\s,;)]*")
+                .matcher(text);
+
+        while (matcher.find()) {
+            String value = matcher.group().trim();
+            String normalized = normalizeForComparison(value);
+            if (requiredHost == null || normalized.contains(requiredHost)) {
+                return value.startsWith("http") ? value : "https://" + value;
+            }
+        }
+
+        return null;
+    }
+
+    private String extractPortfolioUrl(String text, String linkedinUrl, String githubUrl) {
+        Matcher matcher = Pattern.compile("(https?://)?(www\\.)?[A-Za-z0-9.-]+\\.[A-Za-z]{2,}[^\\s,;)]*")
+                .matcher(text);
+
+        while (matcher.find()) {
+            String value = matcher.group().trim();
+            String normalized = normalizeForComparison(value);
+            if (normalized.contains("@")
+                    || normalized.contains("linkedin.com")
+                    || normalized.contains("github.com")) {
+                continue;
+            }
+            String url = value.startsWith("http") ? value : "https://" + value;
+            if (!url.equalsIgnoreCase(linkedinUrl) && !url.equalsIgnoreCase(githubUrl)) {
+                return url;
+            }
+        }
+
+        return null;
+    }
+
+    private List<String> extractSectionEntries(String text, Set<String> startHeadings, int limit) {
+        String section = extractSection(text, startHeadings);
+        if (section == null || section.isBlank()) {
+            return List.of();
+        }
+
+        Set<String> entries = new LinkedHashSet<>();
+        for (String rawLine : section.split("\\R")) {
+            String line = sanitizeLine(rawLine);
+            String normalized = normalizeForComparison(line);
+
+            if (line.isBlank()
+                    || isNoiseHeading(normalized)
+                    || line.contains("@")
+                    || line.length() < 4
+                    || line.length() > 180) {
+                continue;
+            }
+
+            entries.add(line);
+            if (entries.size() >= limit) {
+                break;
+            }
+        }
+
+        return new ArrayList<>(entries);
+    }
+
+    private String extractSection(String text, Set<String> startHeadings) {
+        String[] lines = text.split("\\R");
+        StringBuilder section = new StringBuilder();
+        boolean collecting = false;
+
+        for (String rawLine : lines) {
+            String line = sanitizeLine(rawLine);
+            String normalized = normalizeForComparison(line);
+
+            if (!collecting && startHeadings.stream().anyMatch(normalized::contains)) {
+                collecting = true;
+                continue;
+            }
+
+            if (collecting && isSectionStopHeading(normalized, startHeadings)) {
+                break;
+            }
+
+            if (collecting) {
+                section.append(line).append("\n");
+            }
+        }
+
+        return section.toString().trim();
+    }
+
+    private boolean isSectionStopHeading(String normalized, Set<String> currentHeadings) {
+        if (normalized.isBlank() || currentHeadings.stream().anyMatch(normalized::contains)) {
+            return false;
+        }
+
+        return normalized.equals("competences")
+                || normalized.equals("skills")
+                || normalized.equals("education")
+                || normalized.equals("formation")
+                || normalized.equals("experience")
+                || normalized.equals("experiences")
+                || normalized.equals("projets")
+                || normalized.equals("projects")
+                || normalized.equals("certifications")
+                || normalized.equals("langues")
+                || normalized.equals("languages")
+                || normalized.equals("contact")
+                || normalized.equals("profile")
+                || normalized.equals("summary");
     }
 
     private boolean looksLikeDate(String value) {

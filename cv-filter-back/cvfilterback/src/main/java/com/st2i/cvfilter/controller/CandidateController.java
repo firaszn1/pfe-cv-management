@@ -3,6 +3,10 @@ package com.st2i.cvfilter.controller;
 import java.io.IOException;
 import java.util.List;
 
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.st2i.cvfilter.dto.CandidateFilterRequest;
@@ -11,6 +15,7 @@ import com.st2i.cvfilter.dto.DashboardStatsResponse;
 import com.st2i.cvfilter.dto.SmartSearchRequest;
 import com.st2i.cvfilter.dto.UploadCandidateResponse;
 import com.st2i.cvfilter.model.Candidate;
+import com.st2i.cvfilter.service.AlfrescoDocument;
 import com.st2i.cvfilter.service.CandidateService;
 
 @RestController
@@ -40,6 +45,22 @@ public class CandidateController {
         return service.getCandidateById(id);
     }
 
+    @GetMapping("/hr/candidates/{id}/cv/download")
+    public ResponseEntity<byte[]> downloadCv(@PathVariable String id) {
+        AlfrescoDocument document = service.downloadOriginalCv(id);
+        return cvResponse(document, ContentDisposition.attachment()
+                .filename(document.getFileName())
+                .build());
+    }
+
+    @GetMapping("/hr/candidates/{id}/cv/view")
+    public ResponseEntity<byte[]> viewCv(@PathVariable String id) {
+        AlfrescoDocument document = service.downloadOriginalCv(id);
+        return cvResponse(document, ContentDisposition.inline()
+                .filename(document.getFileName())
+                .build());
+    }
+
     @PutMapping("/hr/candidates/{id}")
     public CandidateResponse update(@PathVariable String id, @RequestBody Candidate c) {
         return service.updateCandidate(id, c);
@@ -63,5 +84,12 @@ public class CandidateController {
     @GetMapping("/hr/dashboard/stats")
     public DashboardStatsResponse stats() {
         return service.getDashboardStats();
+    }
+
+    private ResponseEntity<byte[]> cvResponse(AlfrescoDocument document, ContentDisposition disposition) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(document.getContentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(document.getContent());
     }
 }

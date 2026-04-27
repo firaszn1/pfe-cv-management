@@ -1,62 +1,101 @@
-<div class="app-shell">
-  <aside class="sidebar">
-    <div class="sidebar-top">
-      <div class="brand">
-        <div class="brand-logo">CV</div>
+@if (isPublicPage) {
+  <router-outlet></router-outlet>
+} @else if (isAuthenticated) {
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="brand">
+          <div class="brand-logo">CV</div>
+          <div>
+            <h1>CV SmartMatch</h1>
+            <p>HR Intelligence Platform</p>
+          </div>
+        </div>
+
+        <nav class="nav-links">
+          <a routerLink="/dashboard" routerLinkActive="active">
+            <span class="nav-icon">DB</span>
+            <span>Dashboard</span>
+          </a>
+
+          <a routerLink="/upload" routerLinkActive="active">
+            <span class="nav-icon">UP</span>
+            <span>Upload CV</span>
+          </a>
+
+          <a routerLink="/candidates" routerLinkActive="active">
+            <span class="nav-icon">CV</span>
+            <span>Candidates</span>
+          </a>
+
+          @if (isAdmin) {
+            <a routerLink="/admin/users" routerLinkActive="active">
+              <span class="nav-icon">AD</span>
+              <span>Admin Users</span>
+            </a>
+          }
+        </nav>
+      </div>
+
+      <div class="user-box">
+        <p class="user-label">Connected as</p>
+        <h3>{{ username }}</h3>
+        <p class="roles">{{ roles.join(' | ') }}</p>
+
+        <div class="theme-box">
+          <div>
+            <p class="theme-title">Theme</p>
+            <span class="theme-subtitle">{{ theme === 'dark' ? 'Dark mode' : 'Light mode' }}</span>
+          </div>
+
+          <button class="theme-toggle" (click)="toggleTheme()">
+            {{ theme === 'dark' ? 'Sun' : 'Moon' }}
+          </button>
+        </div>
+
+        <button class="logout-btn" (click)="logout()">Logout</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <div class="topbar">
         <div>
-          <h1>CV SmartMatch</h1>
-          <p>HR Intelligence Platform</p>
+          <h2>Welcome back</h2>
+          <p>Manage candidates, AI search, and recruitment workflows in one polished workspace.</p>
         </div>
       </div>
 
-      <nav class="nav-links">
-        <a routerLink="/dashboard" routerLinkActive="active">
-          <span class="nav-icon">◫</span>
-          <span>Dashboard</span>
-        </a>
+      <section class="page-wrapper">
+        <router-outlet></router-outlet>
+      </section>
+    </main>
+  </div>
 
-        <a routerLink="/upload" routerLinkActive="active">
-          <span class="nav-icon">⬆</span>
-          <span>Upload CV</span>
-        </a>
+  <app-smart-hr-assistant></app-smart-hr-assistant>
+} @else {
+  <router-outlet></router-outlet>
+}
 
-        <a routerLink="/candidates" routerLinkActive="active">
-          <span class="nav-icon">◉</span>
-          <span>Candidates</span>
-        </a>
-      </nav>
-    </div>
 
-    <div class="user-box">
-      <p class="user-label">Connected as</p>
-      <h3>{{ username }}</h3>
-      <p class="roles">{{ roles.join(' • ') }}</p>
+@if (alertService.current(); as alert) {
+  <div class="alert-backdrop" (click)="alertService.close(false)">
+    <section class="alert-dialog" [class.danger]="alert.kind === 'danger'" (click)="$event.stopPropagation()">
+      <div class="alert-mark">{{ alert.kind === 'danger' ? '!' : 'i' }}</div>
+      <div class="alert-copy">
+        <h3>{{ alert.title }}</h3>
+        <p>{{ alert.message }}</p>
+      </div>
 
-      <div class="theme-box">
-        <div>
-          <p class="theme-title">Theme</p>
-          <span class="theme-subtitle">{{ theme === 'dark' ? 'Dark mode' : 'Light mode' }}</span>
-        </div>
-
-        <button class="theme-toggle" (click)="toggleTheme()">
-          {{ theme === 'dark' ? '☀' : '☾' }}
+      <div class="alert-actions">
+        @if (alert.cancelText) {
+          <button class="alert-secondary" (click)="alertService.close(false)">
+            {{ alert.cancelText }}
+          </button>
+        }
+        <button class="alert-primary" [class.danger]="alert.kind === 'danger'" (click)="alertService.close(true)">
+          {{ alert.confirmText }}
         </button>
       </div>
-
-      <button class="logout-btn" (click)="logout()">Logout</button>
-    </div>
-  </aside>
-
-  <main class="main-content">
-    <div class="topbar">
-      <div>
-        <h2>Welcome back</h2>
-        <p>Manage candidates, AI search, and recruitment workflows in one polished workspace.</p>
-      </div>
-    </div>
-
-    <section class="page-wrapper">
-      <router-outlet></router-outlet>
     </section>
-  </main>
-</div>
+  </div>
+}

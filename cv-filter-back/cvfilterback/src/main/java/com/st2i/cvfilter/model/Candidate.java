@@ -26,9 +26,18 @@ public class Candidate {
 
     private String currentJobTitle;
     private String highestDegree;
+    private String linkedinUrl;
+    private String githubUrl;
+    private String portfolioUrl;
+    private List<String> educationEntries = new ArrayList<>();
+    private List<String> experienceEntries = new ArrayList<>();
+    private List<String> projectEntries = new ArrayList<>();
+    private List<String> certifications = new ArrayList<>();
 
     private String cvFileName;
     private String contentType;
+    private String alfrescoNodeId;
+    private String alfrescoFileUrl;
     private String extractedText;
 
     private List<Double> embedding = new ArrayList<>();
@@ -41,7 +50,11 @@ public class Candidate {
     public Candidate(String id, String fullName, String email, String phone, String address,
                      List<String> skills, List<String> languages, Double yearsOfExperience,
                      String seniorityLevel, String currentJobTitle, String highestDegree,
-                     String cvFileName, String contentType, String extractedText,
+                     String linkedinUrl, String githubUrl, String portfolioUrl,
+                     List<String> educationEntries, List<String> experienceEntries,
+                     List<String> projectEntries, List<String> certifications,
+                     String cvFileName, String contentType, String alfrescoNodeId, String alfrescoFileUrl,
+                     String extractedText,
                      List<Double> embedding, LocalDateTime createdAt) {
         this.id = id;
         this.fullName = fullName;
@@ -54,8 +67,17 @@ public class Candidate {
         this.seniorityLevel = seniorityLevel;
         this.currentJobTitle = currentJobTitle;
         this.highestDegree = highestDegree;
+        this.linkedinUrl = linkedinUrl;
+        this.githubUrl = githubUrl;
+        this.portfolioUrl = portfolioUrl;
+        this.educationEntries = educationEntries != null ? educationEntries : new ArrayList<>();
+        this.experienceEntries = experienceEntries != null ? experienceEntries : new ArrayList<>();
+        this.projectEntries = projectEntries != null ? projectEntries : new ArrayList<>();
+        this.certifications = certifications != null ? certifications : new ArrayList<>();
         this.cvFileName = cvFileName;
         this.contentType = contentType;
+        this.alfrescoNodeId = alfrescoNodeId;
+        this.alfrescoFileUrl = alfrescoFileUrl;
         this.extractedText = extractedText;
         this.embedding = embedding != null ? embedding : new ArrayList<>();
         this.createdAt = createdAt;
@@ -149,6 +171,62 @@ public class Candidate {
         this.highestDegree = highestDegree;
     }
 
+    public String getLinkedinUrl() {
+        return linkedinUrl;
+    }
+
+    public void setLinkedinUrl(String linkedinUrl) {
+        this.linkedinUrl = linkedinUrl;
+    }
+
+    public String getGithubUrl() {
+        return githubUrl;
+    }
+
+    public void setGithubUrl(String githubUrl) {
+        this.githubUrl = githubUrl;
+    }
+
+    public String getPortfolioUrl() {
+        return portfolioUrl;
+    }
+
+    public void setPortfolioUrl(String portfolioUrl) {
+        this.portfolioUrl = portfolioUrl;
+    }
+
+    public List<String> getEducationEntries() {
+        return educationEntries;
+    }
+
+    public void setEducationEntries(List<String> educationEntries) {
+        this.educationEntries = educationEntries != null ? educationEntries : new ArrayList<>();
+    }
+
+    public List<String> getExperienceEntries() {
+        return experienceEntries;
+    }
+
+    public void setExperienceEntries(List<String> experienceEntries) {
+        this.experienceEntries = experienceEntries != null ? experienceEntries : new ArrayList<>();
+    }
+
+    public List<String> getProjectEntries() {
+        return projectEntries;
+    }
+
+    public void setProjectEntries(List<String> projectEntries) {
+        this.projectEntries = projectEntries != null ? projectEntries : new ArrayList<>();
+    }
+
+    public List<String> getCertifications() {
+        return certifications;
+    }
+
+    public void setCertifications(List<String> certifications) {
+        this.certifications = certifications != null ? certifications : new ArrayList<>();
+    }
+
     public String getCvFileName() {
         return cvFileName;
     }
@@ -163,6 +241,22 @@ public class Candidate {
 
     public void setContentType(String contentType) {
         this.contentType = contentType;
+    }
+
+    public String getAlfrescoNodeId() {
+        return alfrescoNodeId;
+    }
+
+    public void setAlfrescoNodeId(String alfrescoNodeId) {
+        this.alfrescoNodeId = alfrescoNodeId;
+    }
+
+    public String getAlfrescoFileUrl() {
+        return alfrescoFileUrl;
+    }
+
+    public void setAlfrescoFileUrl(String alfrescoFileUrl) {
+        this.alfrescoFileUrl = alfrescoFileUrl;
     }
 
     public String getExtractedText() {

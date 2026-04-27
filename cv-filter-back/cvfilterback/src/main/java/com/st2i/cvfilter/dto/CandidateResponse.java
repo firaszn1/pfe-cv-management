@@ -16,9 +16,19 @@ public class CandidateResponse {
     private String seniorityLevel;
     private String currentJobTitle;
     private String highestDegree;
+    private String linkedinUrl;
+    private String githubUrl;
+    private String portfolioUrl;
+    private List<String> educationEntries;
+    private List<String> experienceEntries;
+    private List<String> projectEntries;
+    private List<String> certifications;
     private String cvFileName;
+    private String alfrescoNodeId;
+    private String alfrescoFileUrl;
     private LocalDateTime createdAt;
     private Double aiMatchScore;
+    private ScoreBreakdownResponse scoreBreakdown;
 
     public CandidateResponse() {
     }
@@ -35,9 +45,19 @@ public class CandidateResponse {
             String seniorityLevel,
             String currentJobTitle,
             String highestDegree,
+            String linkedinUrl,
+            String githubUrl,
+            String portfolioUrl,
+            List<String> educationEntries,
+            List<String> experienceEntries,
+            List<String> projectEntries,
+            List<String> certifications,
             String cvFileName,
+            String alfrescoNodeId,
+            String alfrescoFileUrl,
             LocalDateTime createdAt,
-            Double aiMatchScore
+            Double aiMatchScore,
+            ScoreBreakdownResponse scoreBreakdown
     ) {
         this.id = id;
         this.fullName = fullName;
@@ -50,9 +70,19 @@ public class CandidateResponse {
         this.seniorityLevel = seniorityLevel;
         this.currentJobTitle = currentJobTitle;
         this.highestDegree = highestDegree;
+        this.linkedinUrl = linkedinUrl;
+        this.githubUrl = githubUrl;
+        this.portfolioUrl = portfolioUrl;
+        this.educationEntries = educationEntries;
+        this.experienceEntries = experienceEntries;
+        this.projectEntries = projectEntries;
+        this.certifications = certifications;
         this.cvFileName = cvFileName;
+        this.alfrescoNodeId = alfrescoNodeId;
+        this.alfrescoFileUrl = alfrescoFileUrl;
         this.createdAt = createdAt;
         this.aiMatchScore = aiMatchScore;
+        this.scoreBreakdown = scoreBreakdown;
     }
 
     public String getId() {
@@ -143,12 +173,84 @@ public class CandidateResponse {
         this.highestDegree = highestDegree;
     }
 
+    public String getLinkedinUrl() {
+        return linkedinUrl;
+    }
+
+    public void setLinkedinUrl(String linkedinUrl) {
+        this.linkedinUrl = linkedinUrl;
+    }
+
+    public String getGithubUrl() {
+        return githubUrl;
+    }
+
+    public void setGithubUrl(String githubUrl) {
+        this.githubUrl = githubUrl;
+    }
+
+    public String getPortfolioUrl() {
+        return portfolioUrl;
+    }
+
+    public void setPortfolioUrl(String portfolioUrl) {
+        this.portfolioUrl = portfolioUrl;
+    }
+
+    public List<String> getEducationEntries() {
+        return educationEntries;
+    }
+
+    public void setEducationEntries(List<String> educationEntries) {
+        this.educationEntries = educationEntries;
+    }
+
+    public List<String> getExperienceEntries() {
+        return experienceEntries;
+    }
+
+    public void setExperienceEntries(List<String> experienceEntries) {
+        this.experienceEntries = experienceEntries;
+    }
+
+    public List<String> getProjectEntries() {
+        return projectEntries;
+    }
+
+    public void setProjectEntries(List<String> projectEntries) {
+        this.projectEntries = projectEntries;
+    }
+
+    public List<String> getCertifications() {
+        return certifications;
+    }
+
+    public void setCertifications(List<String> certifications) {
+        this.certifications = certifications;
+    }
+
     public String getCvFileName() {
         return cvFileName;
     }
 
     public void setCvFileName(String cvFileName) {
         this.cvFileName = cvFileName;
+    }
+
+    public String getAlfrescoNodeId() {
+        return alfrescoNodeId;
+    }
+
+    public void setAlfrescoNodeId(String alfrescoNodeId) {
+        this.alfrescoNodeId = alfrescoNodeId;
+    }
+
+    public String getAlfrescoFileUrl() {
+        return alfrescoFileUrl;
+    }
+
+    public void setAlfrescoFileUrl(String alfrescoFileUrl) {
+        this.alfrescoFileUrl = alfrescoFileUrl;
     }
 
     public LocalDateTime getCreatedAt() {
@@ -165,5 +267,13 @@ public class CandidateResponse {
 
     public void setAiMatchScore(Double aiMatchScore) {
         this.aiMatchScore = aiMatchScore;
+    }
+
+    public ScoreBreakdownResponse getScoreBreakdown() {
+        return scoreBreakdown;
+    }
+
+    public void setScoreBreakdown(ScoreBreakdownResponse scoreBreakdown) {
+        this.scoreBreakdown = scoreBreakdown;
     }
 }
