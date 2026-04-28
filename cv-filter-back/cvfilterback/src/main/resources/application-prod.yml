@@ -1,0 +1,19 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+
+alfresco:
+  base-url: ${ALFRESCO_BASE_URL}
+
+keycloak-admin:
+  server-url: ${KEYCLOAK_SERVER_URL}

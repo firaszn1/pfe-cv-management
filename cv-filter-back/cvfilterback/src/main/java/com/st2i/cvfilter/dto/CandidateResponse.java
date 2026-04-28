@@ -1,6 +1,7 @@
 package com.st2i.cvfilter.dto;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 public class CandidateResponse {
@@ -10,8 +11,8 @@ public class CandidateResponse {
     private String email;
     private String phone;
     private String address;
-    private List<String> skills;
-    private List<String> languages;
+    private List<String> skills = new ArrayList<>();
+    private List<String> languages = new ArrayList<>();
     private Double yearsOfExperience;
     private String seniorityLevel;
     private String currentJobTitle;
@@ -19,16 +20,19 @@ public class CandidateResponse {
     private String linkedinUrl;
     private String githubUrl;
     private String portfolioUrl;
-    private List<String> educationEntries;
-    private List<String> experienceEntries;
-    private List<String> projectEntries;
-    private List<String> certifications;
+    private List<String> educationEntries = new ArrayList<>();
+    private List<String> experienceEntries = new ArrayList<>();
+    private List<String> projectEntries = new ArrayList<>();
+    private List<String> certifications = new ArrayList<>();
     private String cvFileName;
     private String alfrescoNodeId;
     private String alfrescoFileUrl;
     private LocalDateTime createdAt;
     private Double aiMatchScore;
     private ScoreBreakdownResponse scoreBreakdown;
+    private String status;
+    private Boolean shortlisted;
+    private List<String> parsingWarnings = new ArrayList<>();
 
     public CandidateResponse() {
     }
@@ -130,7 +134,7 @@ public class CandidateResponse {
     }
 
     public void setSkills(List<String> skills) {
-        this.skills = skills;
+        this.skills = skills == null ? new ArrayList<>() : skills;
     }
 
     public List<String> getLanguages() {
@@ -138,7 +142,7 @@ public class CandidateResponse {
     }
 
     public void setLanguages(List<String> languages) {
-        this.languages = languages;
+        this.languages = languages == null ? new ArrayList<>() : languages;
     }
 
     public Double getYearsOfExperience() {
@@ -202,7 +206,7 @@ public class CandidateResponse {
     }
 
     public void setEducationEntries(List<String> educationEntries) {
-        this.educationEntries = educationEntries;
+        this.educationEntries = educationEntries == null ? new ArrayList<>() : educationEntries;
     }
 
     public List<String> getExperienceEntries() {
@@ -210,7 +214,7 @@ public class CandidateResponse {
     }
 
     public void setExperienceEntries(List<String> experienceEntries) {
-        this.experienceEntries = experienceEntries;
+        this.experienceEntries = experienceEntries == null ? new ArrayList<>() : experienceEntries;
     }
 
     public List<String> getProjectEntries() {
@@ -218,7 +222,7 @@ public class CandidateResponse {
     }
 
     public void setProjectEntries(List<String> projectEntries) {
-        this.projectEntries = projectEntries;
+        this.projectEntries = projectEntries == null ? new ArrayList<>() : projectEntries;
     }
 
     public List<String> getCertifications() {
@@ -226,7 +230,7 @@ public class CandidateResponse {
     }
 
     public void setCertifications(List<String> certifications) {
-        this.certifications = certifications;
+        this.certifications = certifications == null ? new ArrayList<>() : certifications;
     }
 
     public String getCvFileName() {
@@ -275,5 +279,29 @@ public class CandidateResponse {
 
     public void setScoreBreakdown(ScoreBreakdownResponse scoreBreakdown) {
         this.scoreBreakdown = scoreBreakdown;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Boolean getShortlisted() {
+        return shortlisted;
+    }
+
+    public void setShortlisted(Boolean shortlisted) {
+        this.shortlisted = shortlisted;
+    }
+
+    public List<String> getParsingWarnings() {
+        return parsingWarnings;
+    }
+
+    public void setParsingWarnings(List<String> parsingWarnings) {
+        this.parsingWarnings = parsingWarnings == null ? new ArrayList<>() : parsingWarnings;
     }
 }

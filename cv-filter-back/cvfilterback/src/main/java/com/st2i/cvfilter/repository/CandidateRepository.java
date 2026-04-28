@@ -16,4 +16,6 @@ public interface CandidateRepository extends MongoRepository<Candidate, String> 
     List<Candidate> findBySeniorityLevelIgnoreCase(String seniorityLevel);
 
     List<Candidate> findBySkillsContainingIgnoreCase(String skill);
+
+    List<Candidate> findByShortlistedTrue();
 }

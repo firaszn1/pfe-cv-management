@@ -23,7 +23,9 @@
         </div>
       }
 
-      <button class="upload-btn" (click)="upload()">Upload CV</button>
+      <button class="upload-btn" (click)="upload()" [disabled]="loading">
+        {{ loading ? 'Uploading...' : 'Upload CV' }}
+      </button>
     </div>
 
     @if (message) {

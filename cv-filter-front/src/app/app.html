@@ -33,6 +33,10 @@
               <span class="nav-icon">AD</span>
               <span>Admin Users</span>
             </a>
+            <a routerLink="/admin/audit-logs" routerLinkActive="active">
+              <span class="nav-icon">AL</span>
+              <span>Audit Logs</span>
+            </a>
           }
         </nav>
       </div>
@@ -99,3 +103,13 @@
     </section>
   </div>
 }
+
+<div class="toast-stack">
+  @for (toast of toastService.messages(); track toast.id) {
+    <article class="toast" [class.success]="toast.kind === 'success'" [class.error]="toast.kind === 'error'">
+      <button (click)="toastService.dismiss(toast.id)">x</button>
+      <strong>{{ toast.title }}</strong>
+      <span>{{ toast.message }}</span>
+    </article>
+  }
+</div>

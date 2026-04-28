@@ -55,8 +55,9 @@ public class AdminUserController {
     }
 
     @PutMapping("/{id}")
-    public AdminUserResponse updateUser(@PathVariable String id, @Valid @RequestBody AdminUserRequest request) {
-        return keycloakAdminService.updateUser(id, request);
+    public AdminUserResponse updateUser(@PathVariable String id, @Valid @RequestBody AdminUserRequest request,
+                                        @AuthenticationPrincipal Jwt jwt) {
+        return keycloakAdminService.updateUser(id, request, jwt == null ? null : jwt.getSubject());
     }
 
     @PutMapping("/{id}/roles")

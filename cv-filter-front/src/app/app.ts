@@ -3,6 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import keycloak from './keycloak';
 import { AlertService } from './services/alert.service';
+import { ToastService } from './services/toast.service';
 import { SmartHrAssistantComponent } from './components/smart-hr-assistant/smart-hr-assistant.component';
 
 type ThemeMode = 'dark' | 'light';
@@ -18,6 +19,7 @@ export class App implements OnInit {
   private document = inject(DOCUMENT);
   private router = inject(Router);
   readonly alertService = inject(AlertService);
+  readonly toastService = inject(ToastService);
 
   username = keycloak.tokenParsed?.['preferred_username']?.toString() || 'unknown';
   roles = keycloak.realmAccess?.roles || [];

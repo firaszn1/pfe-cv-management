@@ -8,6 +8,7 @@ import {
   AdminUserService
 } from '../../services/admin-user.service';
 import { AlertService } from '../../services/alert.service';
+import { ToastService } from '../../services/toast.service';
 
 type ManagedRole = 'HR';
 
@@ -178,7 +179,7 @@ type ManagedRole = 'HR';
             } @else if (users.length === 0) {
               <div class="empty-card compact">
                 <h3>No managed users found</h3>
-                <p>Create an HR or ADMIN account to get started.</p>
+                <p>Create an HR account to get started.</p>
               </div>
             } @else if (filteredUsers.length === 0) {
               <div class="empty-card compact">
@@ -208,8 +209,12 @@ type ManagedRole = 'HR';
                     </div>
 
                     <div class="user-actions">
-                      <button class="secondary-btn small" (click)="editUser(user.id)">Edit</button>
-                      <button class="danger-btn small" (click)="deleteUser(user)">Delete</button>
+                      @if (isAdminUser(user)) {
+                        <span class="read-only-note">Keycloak console only</span>
+                      } @else {
+                        <button class="secondary-btn small" (click)="editUser(user.id)">Edit</button>
+                        <button class="danger-btn small" (click)="deleteUser(user)">Delete</button>
+                      }
                     </div>
                   </article>
                 }
@@ -606,6 +611,12 @@ type ManagedRole = 'HR';
       color: #a5f3fc;
     }
 
+    .read-only-note {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
     :host-context(.light-theme-root) .role-badge {
       color: #0f766e;
     }
@@ -658,6 +669,7 @@ type ManagedRole = 'HR';
 export class AdminUsersComponent {
   private adminUserService = inject(AdminUserService);
   private alertService = inject(AlertService);
+  private toastService = inject(ToastService);
 
   users: AdminUserResponse[] = [];
   pendingUsers: AdminUserResponse[] = [];
@@ -670,6 +682,7 @@ export class AdminUsersComponent {
 
   readonly availableRoles: ManagedRole[] = ['HR'];
   readonly isAdmin = (keycloak.realmAccess?.roles || []).includes('ADMIN');
+  readonly currentUserId = keycloak.subject || '';
 
   form: AdminUserRequest = this.createEmptyForm();
 
@@ -722,6 +735,10 @@ export class AdminUsersComponent {
 
     this.adminUserService.getUserById(id).subscribe({
       next: (user) => {
+        if (this.isAdminUser(user)) {
+          this.errorMessage = 'ADMIN users are read-only in the app. Manage ADMIN accounts in Keycloak.';
+          return;
+        }
         this.selectedUserId = user.id;
         this.form = {
           username: user.username ?? '',
@@ -738,7 +755,7 @@ export class AdminUsersComponent {
     });
   }
 
-  saveUser(): void {
+  async saveUser(): Promise<void> {
     this.clearMessages();
 
     if (!this.form.username.trim() || !this.form.email.trim()) {
@@ -761,6 +778,19 @@ export class AdminUsersComponent {
       roles: [...this.form.roles]
     };
 
+    if (this.selectedUserId && payload.enabled === false) {
+      const confirmed = await this.alertService.confirm({
+        title: 'Disable account',
+        message: 'Disable this HR account? The user will no longer be able to access the platform.',
+        confirmText: 'Disable',
+        kind: 'danger'
+      });
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
     const request$ = this.selectedUserId
       ? this.adminUserService.updateUser(this.selectedUserId, payload)
       : this.adminUserService.createUser(payload);
@@ -770,15 +800,24 @@ export class AdminUsersComponent {
         this.successMessage = this.selectedUserId
           ? 'User updated successfully.'
           : 'User created successfully.';
+        this.toastService.show('User saved', this.successMessage, 'success');
         this.resetForm();
         this.loadUsers();
       },
-      error: (error) => this.errorMessage = this.extractErrorMessage(error)
+      error: (error) => {
+        this.errorMessage = this.extractErrorMessage(error);
+        this.toastService.show('User save failed', this.errorMessage, 'error');
+      }
     });
   }
 
   async deleteUser(user: AdminUserResponse): Promise<void> {
     this.clearMessages();
+
+    if (this.isAdminUser(user) || user.id === this.currentUserId) {
+      this.errorMessage = 'ADMIN users and your own account cannot be deleted from the app.';
+      return;
+    }
 
     const confirmed = await this.alertService.confirm({
       title: 'Delete user',
@@ -794,6 +833,7 @@ export class AdminUsersComponent {
     this.adminUserService.deleteUser(user.id).subscribe({
       next: () => {
         this.successMessage = `User ${user.username} deleted.`;
+        this.toastService.show('User deleted', this.successMessage, 'success');
         if (this.selectedUserId === user.id) {
           this.resetForm();
         }
@@ -827,6 +867,7 @@ export class AdminUsersComponent {
     this.adminUserService.approveUser(user.id).subscribe({
       next: () => {
         this.successMessage = `${user.username} approved as HR.`;
+        this.toastService.show('HR approved', this.successMessage, 'success');
         this.loadPendingUsers();
         this.loadUsers();
       },
@@ -858,6 +899,7 @@ export class AdminUsersComponent {
     this.adminUserService.rejectUser(user.id).subscribe({
       next: () => {
         this.successMessage = `${user.username} request rejected.`;
+        this.toastService.show('Request rejected', this.successMessage, 'success');
         this.loadPendingUsers();
       },
       error: (error) => {
@@ -914,6 +956,10 @@ export class AdminUsersComponent {
   displayName(user: AdminUserResponse): string {
     const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
     return fullName || user.username;
+  }
+
+  isAdminUser(user: AdminUserResponse): boolean {
+    return user.roles.includes('ADMIN');
   }
 
   private createEmptyForm(): AdminUserRequest {

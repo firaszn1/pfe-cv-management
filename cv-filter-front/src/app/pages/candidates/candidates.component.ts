@@ -7,6 +7,7 @@ import {
   CandidateService,
   CandidateResponse,
   CandidateFilterRequest,
+  CandidateStatus,
   InterviewKitResponse,
   JobMatchResponse,
   CandidateCompareResponse,
@@ -93,19 +94,43 @@ import { AlertService } from '../../services/alert.service';
             <label>Job Title</label>
             <input [(ngModel)]="filter.currentJobTitle" placeholder="developer / engineer / intern" />
           </div>
+
+          <div class="field field-wide">
+            <label>Status</label>
+            <select [(ngModel)]="filter.status">
+              <option value="">Any</option>
+              @for (status of statuses; track status) {
+                <option [value]="status">{{ statusLabel(status) }}</option>
+              }
+            </select>
+          </div>
         </div>
 
         <div class="action-row">
           <button class="primary-btn" (click)="applyCombinedFilter()">⚡ Apply Filter</button>
           <button class="secondary-btn" (click)="resetFilters()">↺ Reset</button>
-          <button class="secondary-btn" (click)="loadCandidates()">◎ Load All</button>
+          <button class="secondary-btn" (click)="loadCandidates(0)">◎ Load All</button>
+          <button class="secondary-btn" (click)="loadShortlisted()">Shortlisted</button>
         </div>
       </div>
 
-      @if (candidates.length === 0) {
+      @if (!candidatesLoading && candidates.length === 0) {
         <div class="empty-card">
           <h3>No candidates found</h3>
           <p>Try a different query or clear the filters.</p>
+        </div>
+      }
+
+      @if (candidatesLoading) {
+        <div class="cards-grid">
+          @for (item of skeletonCards; track item) {
+            <div class="candidate-card skeleton-card">
+              <span></span>
+              <strong></strong>
+              <p></p>
+              <em></em>
+            </div>
+          }
         </div>
       }
 
@@ -115,13 +140,24 @@ import { AlertService } from '../../services/alert.service';
           <button class="primary-btn small" (click)="compareSelectedCandidates()" [disabled]="selectedCandidateIds.length < 2">
             Compare selected
           </button>
+          <button class="secondary-btn small" (click)="exportShortlist()">Export shortlist</button>
           <button class="secondary-btn small" (click)="clearSelection()">Clear</button>
         </div>
       }
 
+      @if (!candidatesLoading) {
       <div class="cards-grid">
         @for (candidate of candidates; track candidate.id) {
           <div class="candidate-card">
+            <button
+              class="star-toggle"
+              [class.active]="candidate.shortlisted"
+              (click)="toggleShortlist(candidate)"
+              [title]="candidate.shortlisted ? 'Remove from shortlist' : 'Add to shortlist'"
+              [attr.aria-label]="candidate.shortlisted ? 'Remove from shortlist' : 'Add to shortlist'">
+              {{ candidate.shortlisted ? '★' : '☆' }}
+            </button>
+
             <label class="select-line">
               <input
                 type="checkbox"
@@ -142,16 +178,37 @@ import { AlertService } from '../../services/alert.service';
               }
             </div>
 
+            <div class="lifecycle-row">
+              <div class="status-segmented" role="group" aria-label="Candidate status">
+                @for (status of statuses; track status) {
+                  <button
+                    type="button"
+                    [class.active]="candidate.status === status"
+                    (click)="changeStatus(candidate, status)">
+                    {{ statusLabel(status) }}
+                  </button>
+                }
+              </div>
+            </div>
+
             @if (candidate.scoreBreakdown) {
               <div class="score-breakdown">
                 @for (item of breakdownItems(candidate.scoreBreakdown); track item.label) {
                   <div class="score-row">
                     <span>{{ item.label }}</span>
                     <div class="score-track">
-                      <i [style.width.%]="item.value"></i>
+                      <i [style.width.%]="item.value" [style.background]="scoreColor(item.value)"></i>
                     </div>
                     <strong>{{ item.value }}%</strong>
                   </div>
+                }
+              </div>
+            }
+
+            @if (candidate.parsingWarnings.length) {
+              <div class="tags">
+                @for (warning of candidate.parsingWarnings; track warning) {
+                  <span class="tag alt">{{ warning }}</span>
                 }
               </div>
             }
@@ -209,7 +266,7 @@ import { AlertService } from '../../services/alert.service';
               <p>Skills</p>
               <div class="tags">
                 @for (skill of candidate.skills; track skill) {
-                  <span class="tag">{{ skill }}</span>
+                  <span class="tag skill-tag"><i></i>{{ skill }}</span>
                 }
               </div>
             </div>
@@ -225,48 +282,58 @@ import { AlertService } from '../../services/alert.service';
               </div>
             }
 
-            @if (hasDetailedExtraction(candidate)) {
+            @if (candidate.experienceEntries.length || hasNonExperienceDetails(candidate)) {
               <div class="details-section">
-                @if (candidate.experienceEntries.length) {
-                  <div>
-                    <p>Experience details</p>
-                    <ul>
-                      @for (item of candidate.experienceEntries.slice(0, 4); track item) {
-                        <li>{{ item }}</li>
-                      }
-                    </ul>
-                  </div>
-                }
-                @if (candidate.projectEntries.length) {
-                  <div>
-                    <p>Projects</p>
-                    <ul>
-                      @for (item of candidate.projectEntries.slice(0, 4); track item) {
-                        <li>{{ item }}</li>
-                      }
-                    </ul>
-                  </div>
-                }
-                @if (candidate.educationEntries.length) {
-                  <div>
-                    <p>Education details</p>
-                    <ul>
-                      @for (item of candidate.educationEntries.slice(0, 3); track item) {
-                        <li>{{ item }}</li>
-                      }
-                    </ul>
-                  </div>
-                }
-                @if (candidate.certifications.length) {
-                  <div>
-                    <p>Certifications</p>
-                    <ul>
-                      @for (item of candidate.certifications.slice(0, 3); track item) {
-                        <li>{{ item }}</li>
-                      }
-                    </ul>
-                  </div>
-                }
+                <div class="experience-toggle-row">
+                  <p>Experience details</p>
+                  <button class="details-toggle" (click)="toggleExperienceDetails(candidate.id)">
+                    {{ isExperienceExpanded(candidate.id) ? 'Hide Experience' : 'Show Experience' }}
+                    <span [class.open]="isExperienceExpanded(candidate.id)">⌄</span>
+                  </button>
+                </div>
+
+                <div class="experience-collapse" [class.open]="isExperienceExpanded(candidate.id)">
+                  @if (candidate.experienceEntries.length) {
+                    <div>
+                      <p>Experience</p>
+                      <ul>
+                        @for (item of candidate.experienceEntries; track item) {
+                          <li>{{ item }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+                  @if (candidate.projectEntries.length) {
+                    <div>
+                      <p>Projects</p>
+                      <ul>
+                        @for (item of candidate.projectEntries; track item) {
+                          <li>{{ item }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+                  @if (candidate.educationEntries.length) {
+                    <div>
+                      <p>Education details</p>
+                      <ul>
+                        @for (item of candidate.educationEntries; track item) {
+                          <li>{{ item }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+                  @if (candidate.certifications.length) {
+                    <div>
+                      <p>Certifications</p>
+                      <ul>
+                        @for (item of candidate.certifications; track item) {
+                          <li>{{ item }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+                </div>
               </div>
             }
 
@@ -274,11 +341,16 @@ import { AlertService } from '../../services/alert.service';
               <span class="file-name">{{ candidate.cvFileName }}</span>
 
               <div class="card-actions">
-                <button class="secondary-btn small" (click)="viewOriginalCv(candidate)" [disabled]="!candidate.alfrescoNodeId">
-                  View Original CV
+                <button class="icon-btn" (click)="viewOriginalCv(candidate)" [disabled]="!candidate.alfrescoNodeId">
+                  <span>View</span>
+                  View CV
                 </button>
-                <button class="secondary-btn small" (click)="downloadOriginalCv(candidate)" [disabled]="!candidate.alfrescoNodeId">
+                <button class="icon-btn" (click)="downloadOriginalCv(candidate)" [disabled]="!candidate.alfrescoNodeId">
+                  <span>Down</span>
                   Download CV
+                </button>
+                <button class="secondary-btn small" (click)="exportCandidate(candidate)">
+                  Export
                 </button>
                 <button class="primary-btn small" (click)="generateInterviewKit(candidate)">
                   {{ generatingKitForId === candidate.id ? 'Generating...' : 'Interview Kit' }}
@@ -293,6 +365,55 @@ import { AlertService } from '../../services/alert.service';
           </div>
         }
       </div>
+      }
+
+      @if (showPagination) {
+        <nav class="action-row pagination-bar" aria-label="Candidate pagination">
+          <button class="secondary-btn small" (click)="previousPage()" [disabled]="currentPage === 0">Previous</button>
+          <div class="page-numbers">
+            @for (page of visiblePages(); track page) {
+              <button
+                type="button"
+                [ngClass]="page === currentPage ? 'primary-btn small' : 'secondary-btn small'"
+                [disabled]="page === currentPage"
+                (click)="loadCandidates(page)">
+                {{ page + 1 }}
+              </button>
+            }
+          </div>
+          <button class="secondary-btn small" (click)="nextPage()" [disabled]="currentPage >= totalPages - 1">Next</button>
+          <span>{{ totalElements }} candidates</span>
+        </nav>
+      }
+
+      @if (!candidatesLoading && recentCandidates.length > 0) {
+        <section class="recent-section">
+          <div class="recent-head">
+            <div>
+              <p class="eyebrow">Talent Movement</p>
+              <h3>Recent Candidates</h3>
+            </div>
+            <div class="carousel-actions">
+              <button type="button" (click)="scrollRecent(recentRail, -1)" aria-label="Scroll recent candidates left">‹</button>
+              <button type="button" (click)="scrollRecent(recentRail, 1)" aria-label="Scroll recent candidates right">›</button>
+            </div>
+          </div>
+
+          <div class="recent-carousel" #recentRail>
+            @for (candidate of recentCandidates; track candidate.id) {
+              <a class="recent-card" [routerLink]="['/candidates/edit', candidate.id]">
+                <div class="avatar">{{ initials(candidate.fullName) }}</div>
+                <div>
+                  <h4>{{ candidate.fullName || 'Unnamed candidate' }}</h4>
+                  <p>{{ candidate.currentJobTitle || 'No job title' }}</p>
+                  <span class="tag">{{ statusLabel(candidate.status) }}</span>
+                  <time>{{ relativeDate(candidate.createdAt) }}</time>
+                </div>
+              </a>
+            }
+          </div>
+        </section>
+      }
 
       @if (interviewKit) {
         <div class="kit-backdrop" (click)="closeInterviewKit()">
@@ -447,12 +568,14 @@ import { AlertService } from '../../services/alert.service';
     .ai-match-card,
     .filters-card,
     .empty-card,
-    .candidate-card {
+    .candidate-card,
+    .recent-section {
       padding: 24px;
-      border-radius: 24px;
-      background: var(--surface);
+      border-radius: 20px;
+      background: linear-gradient(145deg, var(--surface), rgba(255,255,255,0.025));
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
     }
 
     .search-head {
@@ -639,13 +762,58 @@ import { AlertService } from '../../services/alert.service';
     .candidate-card {
       position: relative;
       overflow: hidden;
+      transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease;
+      padding-top: 28px;
+    }
+
+    .candidate-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(6,182,212,0.22);
+      box-shadow: 0 22px 54px rgba(6,182,212,0.10);
     }
 
     .select-line {
+      padding-right: 56px;
       margin-bottom: 12px;
       color: var(--muted);
       font-weight: 800;
       font-size: 13px;
+    }
+
+    .star-toggle {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      z-index: 2;
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: #c7d2fe;
+      background: var(--surface-3);
+      cursor: pointer;
+      font-size: 24px;
+      line-height: 1;
+      transition: transform 0.22s ease, color 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+    }
+
+    .star-toggle:hover {
+      transform: translateY(-2px) scale(1.04);
+      border-color: rgba(6,182,212,0.28);
+      box-shadow: 0 12px 26px rgba(6,182,212,0.12);
+    }
+
+    .star-toggle.active {
+      color: #fef3c7;
+      background: rgba(245,158,11,0.16);
+      border-color: rgba(245,158,11,0.34);
+      box-shadow: 0 0 0 4px rgba(245,158,11,0.08), 0 12px 26px rgba(245,158,11,0.12);
+    }
+
+    .star-toggle:active {
+      transform: scale(0.94);
     }
 
     .candidate-top {
@@ -676,6 +844,46 @@ import { AlertService } from '../../services/alert.service';
       color: white;
       background: linear-gradient(135deg, #22c55e, #06b6d4);
       box-shadow: 0 12px 26px rgba(6,182,212,0.22);
+    }
+
+    .lifecycle-row {
+      margin-bottom: 18px;
+    }
+
+    .status-segmented {
+      display: flex;
+      gap: 6px;
+      padding: 6px;
+      overflow-x: auto;
+      border-radius: 18px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      scrollbar-width: thin;
+    }
+
+    .status-segmented button {
+      flex: 0 0 auto;
+      min-width: 92px;
+      border: 0;
+      border-radius: 13px;
+      padding: 10px 12px;
+      cursor: pointer;
+      color: var(--muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 900;
+      transition: transform 0.22s ease, box-shadow 0.22s ease, color 0.22s ease, background 0.22s ease;
+    }
+
+    .status-segmented button:hover {
+      color: var(--heading);
+      transform: translateY(-1px);
+    }
+
+    .status-segmented button.active {
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      box-shadow: 0 10px 22px rgba(6,182,212,0.18);
     }
 
     .score-breakdown {
@@ -774,6 +982,9 @@ import { AlertService } from '../../services/alert.service';
     }
 
     .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
       padding: 8px 12px;
       border-radius: 999px;
       background: rgba(79,70,229,0.18);
@@ -781,6 +992,20 @@ import { AlertService } from '../../services/alert.service';
       color: #c7d2fe;
       font-size: 13px;
       font-weight: 600;
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+
+    .tag:hover {
+      transform: translateY(-1px);
+      border-color: rgba(6,182,212,0.28);
+    }
+
+    .skill-tag i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #22d3ee;
+      box-shadow: 0 0 10px rgba(34,211,238,0.48);
     }
 
     :host-context(.light-theme-root) .tag {
@@ -813,6 +1038,64 @@ import { AlertService } from '../../services/alert.service';
       font-weight: 800;
     }
 
+    .experience-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .experience-toggle-row p {
+      margin: 0;
+    }
+
+    .details-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--text);
+      background: var(--surface-3);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 900;
+      transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+    }
+
+    .details-toggle:hover {
+      transform: translateY(-1px);
+      border-color: rgba(6,182,212,0.26);
+      box-shadow: 0 10px 22px rgba(6,182,212,0.08);
+    }
+
+    .details-toggle span {
+      display: inline-block;
+      transition: transform 0.22s ease;
+    }
+
+    .details-toggle span.open {
+      transform: rotate(180deg);
+    }
+
+    .experience-collapse {
+      display: grid;
+      gap: 12px;
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: max-height 0.28s ease, opacity 0.22s ease, transform 0.22s ease;
+    }
+
+    .experience-collapse.open {
+      max-height: 900px;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
     .details-section ul {
       margin: 0;
       padding-left: 18px;
@@ -840,6 +1123,192 @@ import { AlertService } from '../../services/alert.service';
       gap: 8px;
       flex-wrap: wrap;
       justify-content: flex-end;
+    }
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 13px;
+      cursor: pointer;
+      color: var(--text);
+      background: var(--surface-3);
+      font-size: 13px;
+      font-weight: 900;
+      transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+    }
+
+    .icon-btn span {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 9px;
+      color: transparent;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      box-shadow: 0 8px 16px rgba(79,70,229,0.18);
+    }
+
+    .icon-btn:hover {
+      transform: translateY(-2px);
+      border-color: rgba(6,182,212,0.26);
+      box-shadow: 0 12px 24px rgba(6,182,212,0.10);
+    }
+
+    .icon-btn:active,
+    .primary-btn:active,
+    .secondary-btn:active,
+    .danger-btn:active {
+      transform: translateY(0) scale(0.98);
+    }
+
+    .icon-btn.active {
+      color: #fef3c7;
+      border-color: rgba(245,158,11,0.28);
+      background: rgba(245,158,11,0.14);
+    }
+
+    .icon-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+      transform: none;
+    }
+
+    .recent-section {
+      display: grid;
+      gap: 16px;
+    }
+
+    .recent-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .carousel-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .carousel-actions button {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      color: var(--text);
+      background: var(--surface-3);
+      cursor: pointer;
+      font-size: 24px;
+      font-weight: 900;
+      transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+    }
+
+    .carousel-actions button:hover {
+      transform: translateY(-2px);
+      border-color: rgba(6,182,212,0.26);
+      box-shadow: 0 12px 24px rgba(6,182,212,0.10);
+    }
+
+    .recent-head h3 {
+      margin: 0;
+      color: var(--heading);
+      font-size: 22px;
+    }
+
+    .recent-carousel {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(260px, 320px);
+      gap: 14px;
+      overflow-x: auto;
+      padding: 4px 4px 12px;
+      scroll-behavior: smooth;
+      scrollbar-width: thin;
+    }
+
+    .recent-card {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 12px;
+      min-height: 138px;
+      padding: 16px;
+      border-radius: 18px;
+      text-decoration: none;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease;
+    }
+
+    .recent-card:hover {
+      transform: translateY(-3px) scale(1.01);
+      border-color: rgba(6,182,212,0.28);
+      box-shadow: 0 18px 38px rgba(6,182,212,0.10);
+    }
+
+    .avatar {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      color: white;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    }
+
+    .recent-card h4 {
+      margin: 0 0 5px;
+      color: var(--heading);
+      font-size: 16px;
+    }
+
+    .recent-card p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .recent-card time {
+      display: block;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .skeleton-card {
+      min-height: 260px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .skeleton-card span,
+    .skeleton-card strong,
+    .skeleton-card p,
+    .skeleton-card em {
+      display: block;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.12), rgba(255,255,255,0.05));
+      background-size: 220% 100%;
+      animation: skeletonPulse 1.4s ease-in-out infinite;
+    }
+
+    .skeleton-card span { width: 42%; height: 16px; }
+    .skeleton-card strong { width: 68%; height: 24px; }
+    .skeleton-card p { width: 88%; height: 80px; border-radius: 18px; }
+    .skeleton-card em { width: 56%; height: 34px; }
+
+    @keyframes skeletonPulse {
+      from { background-position: 120% 0; }
+      to { background-position: -120% 0; }
     }
 
     .compare-bar {
@@ -1012,6 +1481,14 @@ export class CandidatesComponent {
 
   roles = keycloak.realmAccess?.roles || [];
   candidates: CandidateResponse[] = [];
+  candidatesLoading = false;
+  currentPage = 0;
+  pageSize = 10;
+  totalElements = 0;
+  totalPages = 0;
+  resultMode: 'paged' | 'search' | 'filter' | 'shortlist' | 'job' = 'paged';
+  readonly skeletonCards = [1, 2, 3, 4];
+  expandedExperienceIds = new Set<string>();
   interviewKit: InterviewKitResponse | null = null;
   generatingKitForId: string | null = null;
   jobMatch: JobMatchResponse | null = null;
@@ -1023,24 +1500,74 @@ export class CandidatesComponent {
   aiMatchText = '';
   minExperienceYears: number | null = null;
   minExperienceMonths: number | null = null;
+  readonly statuses: CandidateStatus[] = ['NEEDS_REVIEW', 'NEW', 'REVIEWED', 'INTERVIEW', 'REJECTED', 'HIRED'];
 
   filter: CandidateFilterRequest = {
     fullName: '',
     skill: '',
     seniorityLevel: '',
     minExperience: null,
-    currentJobTitle: ''
+    currentJobTitle: '',
+    status: ''
   };
 
   ngOnInit(): void {
     this.loadCandidates();
   }
 
-  loadCandidates(): void {
-    this.candidateService.getAllCandidates().subscribe({
-      next: (res) => this.candidates = res,
-      error: () => this.candidates = []
+  loadCandidates(page = 0): void {
+    this.resultMode = 'paged';
+    this.jobMatch = null;
+    const requestedPage = Math.max(0, page);
+    this.candidatesLoading = true;
+    this.candidateService.getCandidatesPage(requestedPage, this.pageSize).subscribe({
+      next: (res) => {
+        this.candidates = res.content;
+        this.currentPage = res.currentPage;
+        this.totalPages = res.totalPages;
+        this.totalElements = res.totalElements;
+        this.candidatesLoading = false;
+      },
+      error: () => {
+        this.candidates = [];
+        this.currentPage = 0;
+        this.totalPages = 0;
+        this.totalElements = 0;
+        this.candidatesLoading = false;
+      }
     });
+  }
+
+  nextPage(): void {
+    if (this.resultMode === 'paged' && this.currentPage < this.totalPages - 1) {
+      this.loadCandidates(this.currentPage + 1);
+    }
+  }
+
+  previousPage(): void {
+    if (this.resultMode === 'paged' && this.currentPage > 0) {
+      this.loadCandidates(this.currentPage - 1);
+    }
+  }
+
+  visiblePages(): number[] {
+    if (this.resultMode !== 'paged' || this.totalPages <= 0) {
+      return [];
+    }
+
+    const start = Math.max(0, this.currentPage - 2);
+    const end = Math.min(this.totalPages, start + 5);
+    return Array.from({ length: end - start }, (_, index) => start + index);
+  }
+
+  get showPagination(): boolean {
+    return !this.candidatesLoading && this.resultMode === 'paged' && this.totalPages > 1;
+  }
+
+  private clearPaginationForResults(total: number): void {
+    this.currentPage = 0;
+    this.totalPages = 0;
+    this.totalElements = total;
   }
 
   setAiMode(mode: 'search' | 'job'): void {
@@ -1064,24 +1591,40 @@ export class CandidatesComponent {
     }
 
     this.jobMatchLoading = true;
+    this.candidatesLoading = true;
+    this.resultMode = 'search';
     this.jobMatch = null;
     this.candidateService.smartSearch({ query: text }).subscribe({
       next: (res) => {
         this.candidates = res;
+        this.clearPaginationForResults(res.length);
         this.jobMatchLoading = false;
+        this.candidatesLoading = false;
       },
       error: () => {
         this.candidates = [];
+        this.clearPaginationForResults(0);
         this.jobMatchLoading = false;
+        this.candidatesLoading = false;
       }
     });
   }
 
   applyCombinedFilter(): void {
     this.filter.minExperience = this.totalExperience(this.minExperienceYears, this.minExperienceMonths);
+    this.candidatesLoading = true;
+    this.resultMode = 'filter';
     this.candidateService.filterCandidates(this.filter).subscribe({
-      next: (res) => this.candidates = res,
-      error: () => this.candidates = []
+      next: (res) => {
+        this.candidates = res;
+        this.clearPaginationForResults(res.length);
+        this.candidatesLoading = false;
+      },
+      error: () => {
+        this.candidates = [];
+        this.clearPaginationForResults(0);
+        this.candidatesLoading = false;
+      }
     });
   }
 
@@ -1093,9 +1636,68 @@ export class CandidatesComponent {
       skill: '',
       seniorityLevel: '',
       minExperience: null,
-      currentJobTitle: ''
+      currentJobTitle: '',
+      status: ''
     };
-    this.loadCandidates();
+    this.loadCandidates(0);
+  }
+
+  loadShortlisted(): void {
+    this.candidatesLoading = true;
+    this.resultMode = 'shortlist';
+    this.candidateService.getShortlistedCandidates().subscribe({
+      next: (res) => {
+        this.candidates = res;
+        this.clearPaginationForResults(res.length);
+        this.candidatesLoading = false;
+      },
+      error: () => {
+        this.candidates = [];
+        this.clearPaginationForResults(0);
+        this.candidatesLoading = false;
+      }
+    });
+  }
+
+  changeStatus(candidate: CandidateResponse, status: string): void {
+    this.candidateService.updateStatus(candidate.id, status as CandidateStatus).subscribe({
+      next: (updated) => {
+        Object.assign(candidate, updated);
+      },
+      error: () => {
+        this.alertService.alert({
+          title: 'Status update failed',
+          message: 'Could not update the recruitment status.',
+          kind: 'danger'
+        });
+      }
+    });
+  }
+
+  toggleShortlist(candidate: CandidateResponse): void {
+    this.candidateService.toggleShortlist(candidate.id).subscribe({
+      next: (updated) => {
+        Object.assign(candidate, updated);
+      },
+      error: () => {
+        this.alertService.alert({
+          title: 'Shortlist update failed',
+          message: 'Could not update the shortlist state.',
+          kind: 'danger'
+        });
+      }
+    });
+  }
+
+  statusLabel(status: string | null | undefined): string {
+    if (!status) {
+      return 'New';
+    }
+    return status
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
   }
 
   matchJobDescription(description = this.aiMatchText.trim()): void {
@@ -1104,14 +1706,21 @@ export class CandidatesComponent {
     }
 
     this.jobMatchLoading = true;
+    this.candidatesLoading = true;
+    this.resultMode = 'job';
     this.candidateService.matchJobDescription({ description }).subscribe({
       next: (result) => {
         this.jobMatch = result;
         this.candidates = result.candidates;
+        this.clearPaginationForResults(result.candidates.length);
         this.jobMatchLoading = false;
+        this.candidatesLoading = false;
       },
       error: () => {
+        this.candidates = [];
+        this.clearPaginationForResults(0);
         this.jobMatchLoading = false;
+        this.candidatesLoading = false;
         this.alertService.alert({
           title: 'Job match failed',
           message: 'Could not analyze this job description.',
@@ -1123,13 +1732,13 @@ export class CandidatesComponent {
 
   clearJobMatch(): void {
     this.jobMatch = null;
-    this.loadCandidates();
+    this.loadCandidates(0);
   }
 
   clearAiMatch(): void {
     this.aiMatchText = '';
     this.jobMatch = null;
-    this.loadCandidates();
+    this.loadCandidates(0);
   }
 
   isSelected(candidateId: string): boolean {
@@ -1179,6 +1788,48 @@ export class CandidatesComponent {
     this.comparisonResult = null;
   }
 
+  get recentCandidates(): CandidateResponse[] {
+    return [...this.candidates]
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 8);
+  }
+
+  initials(name: string | null | undefined): string {
+    const parts = (name || 'Candidate')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2);
+    return parts.map((part) => part.charAt(0).toUpperCase()).join('') || 'CV';
+  }
+
+  relativeDate(value: string | null | undefined): string {
+    if (!value) {
+      return 'Recently added';
+    }
+
+    const diffMs = Date.now() - new Date(value).getTime();
+    const days = Math.max(0, Math.floor(diffMs / 86_400_000));
+    if (days === 0) {
+      return 'Today';
+    }
+    if (days === 1) {
+      return '1 day ago';
+    }
+    if (days < 30) {
+      return `${days} days ago`;
+    }
+    const months = Math.floor(days / 30);
+    return months === 1 ? '1 month ago' : `${months} months ago`;
+  }
+
+  scrollRecent(container: HTMLElement, direction: number): void {
+    container.scrollBy({
+      left: direction * 340,
+      behavior: 'smooth'
+    });
+  }
+
   breakdownItems(breakdown: ScoreBreakdownResponse): Array<{ label: string; value: number }> {
     return [
       { label: 'Skills', value: Math.round(breakdown.skillsMatch || 0) },
@@ -1188,13 +1839,32 @@ export class CandidatesComponent {
     ];
   }
 
-  hasDetailedExtraction(candidate: CandidateResponse): boolean {
+  scoreColor(value: number): string {
+    if (value < 50) return 'linear-gradient(135deg, #ef4444, #f97316)';
+    if (value < 75) return 'linear-gradient(135deg, #f59e0b, #eab308)';
+    return 'linear-gradient(135deg, #22c55e, #06b6d4)';
+  }
+
+  hasNonExperienceDetails(candidate: CandidateResponse): boolean {
     return Boolean(
-      candidate.experienceEntries.length ||
       candidate.projectEntries.length ||
       candidate.educationEntries.length ||
       candidate.certifications.length
     );
+  }
+
+  isExperienceExpanded(candidateId: string): boolean {
+    return this.expandedExperienceIds.has(candidateId);
+  }
+
+  toggleExperienceDetails(candidateId: string): void {
+    if (this.expandedExperienceIds.has(candidateId)) {
+      this.expandedExperienceIds.delete(candidateId);
+      this.expandedExperienceIds = new Set(this.expandedExperienceIds);
+      return;
+    }
+
+    this.expandedExperienceIds = new Set(this.expandedExperienceIds).add(candidateId);
   }
 
   formatExperience(value: number | null | undefined): string {
@@ -1290,6 +1960,41 @@ export class CandidatesComponent {
     });
   }
 
+  exportCandidate(candidate: CandidateResponse): void {
+    this.candidateService.exportCandidate(candidate.id).subscribe({
+      next: (blob) => this.downloadBlob(blob, `${candidate.fullName || 'candidate'}-profile.pdf`),
+      error: () => {
+        this.alertService.alert({
+          title: 'Export failed',
+          message: 'Could not export this candidate.',
+          kind: 'danger'
+        });
+      }
+    });
+  }
+
+  exportShortlist(): void {
+    this.candidateService.exportShortlist().subscribe({
+      next: (blob) => this.downloadBlob(blob, 'shortlisted-candidates.pdf'),
+      error: () => {
+        this.alertService.alert({
+          title: 'Export failed',
+          message: 'Could not export the shortlist.',
+          kind: 'danger'
+        });
+      }
+    });
+  }
+
+  private downloadBlob(blob: Blob, fileName: string): void {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName.replace(/[^\w.-]+/g, '-');
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async deleteCandidate(candidateOrId: CandidateResponse | string): Promise<void> {
     const candidate = typeof candidateOrId === 'string'
       ? this.candidates.find((item) => item.id === candidateOrId)
@@ -1316,7 +2021,7 @@ export class CandidatesComponent {
     }
 
     this.candidateService.deleteCandidate(candidate.id).subscribe({
-      next: () => this.loadCandidates(),
+      next: () => this.loadCandidates(this.resultMode === 'paged' ? this.currentPage : 0),
       error: () => {
         this.alertService.alert({
           title: 'Delete failed',

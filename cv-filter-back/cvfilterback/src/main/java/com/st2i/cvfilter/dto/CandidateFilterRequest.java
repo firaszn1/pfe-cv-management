@@ -7,6 +7,7 @@ public class CandidateFilterRequest {
     private String seniorityLevel;
     private Double minExperience;
     private String currentJobTitle;
+    private String status;
 
     public CandidateFilterRequest() {
     }
@@ -49,5 +50,13 @@ public class CandidateFilterRequest {
 
     public void setCurrentJobTitle(String currentJobTitle) {
         this.currentJobTitle = currentJobTitle;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

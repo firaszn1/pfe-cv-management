@@ -39,6 +39,9 @@ public class Candidate {
     private String alfrescoNodeId;
     private String alfrescoFileUrl;
     private String extractedText;
+    private String status = "NEW";
+    private Boolean shortlisted = false;
+    private List<String> parsingWarnings = new ArrayList<>();
 
     private List<Double> embedding = new ArrayList<>();
 
@@ -265,6 +268,30 @@ public class Candidate {
 
     public void setExtractedText(String extractedText) {
         this.extractedText = extractedText;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Boolean getShortlisted() {
+        return shortlisted;
+    }
+
+    public void setShortlisted(Boolean shortlisted) {
+        this.shortlisted = shortlisted;
+    }
+
+    public List<String> getParsingWarnings() {
+        return parsingWarnings;
+    }
+
+    public void setParsingWarnings(List<String> parsingWarnings) {
+        this.parsingWarnings = parsingWarnings != null ? parsingWarnings : new ArrayList<>();
     }
 
     public List<Double> getEmbedding() {

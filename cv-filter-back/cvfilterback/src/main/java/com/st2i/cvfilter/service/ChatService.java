@@ -14,9 +14,13 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 import com.st2i.cvfilter.dto.CandidateResponse;
+import com.st2i.cvfilter.dto.CandidateCompareRequest;
+import com.st2i.cvfilter.dto.CandidateCompareResponse;
 import com.st2i.cvfilter.dto.ChatCandidateResponse;
 import com.st2i.cvfilter.dto.ChatRequest;
 import com.st2i.cvfilter.dto.ChatResponse;
+import com.st2i.cvfilter.dto.JobMatchRequest;
+import com.st2i.cvfilter.dto.JobMatchResponse;
 import com.st2i.cvfilter.dto.SmartSearchRequest;
 
 @Service
@@ -34,10 +38,15 @@ public class ChatService {
     );
 
     private final CandidateService candidateService;
+    private final JobMatchService jobMatchService;
+    private final CandidateCompareService candidateCompareService;
     private final Map<String, ConversationState> conversations = new ConcurrentHashMap<>();
 
-    public ChatService(CandidateService candidateService) {
+    public ChatService(CandidateService candidateService, JobMatchService jobMatchService,
+                       CandidateCompareService candidateCompareService) {
         this.candidateService = candidateService;
+        this.jobMatchService = jobMatchService;
+        this.candidateCompareService = candidateCompareService;
     }
 
     public ChatResponse reply(ChatRequest request) {
@@ -59,7 +68,46 @@ public class ChatService {
             return compareCandidates(conversationId, state, message);
         }
 
+        if (intent == Intent.JOB_MATCH) {
+            return matchJobDescription(conversationId, state, message);
+        }
+
         return searchCandidates(conversationId, state, message, intent == Intent.FOLLOW_UP);
+    }
+
+    private ChatResponse matchJobDescription(String conversationId, ConversationState state, String message) {
+        JobMatchRequest request = new JobMatchRequest();
+        request.setDescription(message);
+        JobMatchResponse match = jobMatchService.match(request);
+        List<CandidateResponse> candidates = match.getCandidates().stream()
+                .limit(RESULT_LIMIT)
+                .collect(Collectors.toList());
+
+        state.lastQuery = message;
+        state.lastResults = candidates;
+        if (!candidates.isEmpty()) {
+            state.selectedCandidateId = candidates.get(0).getId();
+        }
+
+        QuerySignals signals = extractSignals(message);
+        List<ChatCandidateResponse> enriched = candidates.stream()
+                .map(candidate -> enrichCandidate(candidate, signals))
+                .collect(Collectors.toList());
+
+        ChatResponse response = new ChatResponse();
+        response.setConversationId(conversationId);
+        response.setIntent("job_match");
+        response.setCandidates(enriched);
+        if (!enriched.isEmpty()) {
+            response.setTopCandidate(enriched.get(0));
+        }
+        response.setMessage(enriched.isEmpty()
+                ? "No candidates matched this job description strongly enough."
+                : "Top job match: " + enriched.get(0).getCandidate().getFullName()
+                        + scoreText(enriched.get(0).getCandidate()) + ".");
+        response.setExplanation("Detected seniority: " + valueOrUnknown(match.getSeniority())
+                + ". Detected keywords: " + String.join(", ", match.getKeywords()) + ".");
+        return response;
     }
 
     private ChatResponse searchCandidates(
@@ -158,9 +206,12 @@ public class ChatService {
                 ))
                 .limit(2)
                 .collect(Collectors.toList());
+        CandidateCompareRequest request = new CandidateCompareRequest();
+        request.setCandidateIds(topTwo.stream().map(CandidateResponse::getId).collect(Collectors.toList()));
+        CandidateCompareResponse comparison = candidateCompareService.compare(request);
 
         QuerySignals signals = extractSignals(state.lastQuery == null ? message : state.lastQuery);
-        List<ChatCandidateResponse> enriched = topTwo.stream()
+        List<ChatCandidateResponse> enriched = comparison.getCandidates().stream()
                 .map(candidate -> enrichCandidate(candidate, signals))
                 .collect(Collectors.toList());
 
@@ -171,7 +222,8 @@ public class ChatService {
         response.setTopCandidate(enriched.get(0));
         response.setMessage("I would pick " + enriched.get(0).getCandidate().getFullName()
                 + " over " + enriched.get(1).getCandidate().getFullName() + ".");
-        response.setExplanation("The recommendation is based on the higher AI match score and the strongest overlap with the requested skills, seniority, and job title.");
+        response.setExplanation(comparison.getComparison().getExperienceDifference()
+                + " Shared skills: " + String.join(", ", comparison.getComparison().getSkillsOverlap()) + ".");
         return response;
     }
 
@@ -326,6 +378,12 @@ public class ChatService {
                 || normalized.contains("who is better")) {
             return Intent.COMPARISON;
         }
+        if (normalized.contains("job description")
+                || normalized.contains("responsibilities")
+                || normalized.contains("requirements")
+                || normalized.length() > 350) {
+            return Intent.JOB_MATCH;
+        }
         if (hasPreviousResults(state)
                 && (normalized.startsWith("only ") || normalized.startsWith("just ")
                 || normalized.contains(" filter ") || normalized.startsWith("with ")
@@ -456,7 +514,8 @@ public class ChatService {
         SEARCH,
         FOLLOW_UP,
         SUMMARY,
-        COMPARISON
+        COMPARISON,
+        JOB_MATCH
     }
 
     private static class QuerySignals {

@@ -2,7 +2,8 @@ import { Component, HostBinding, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { CandidateService, CandidateResponse } from '../../services/candidate.service';
+import { CandidateService, CandidateResponse, CandidateStatus } from '../../services/candidate.service';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-edit-candidate',
@@ -10,23 +11,66 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
   imports: [CommonModule, FormsModule],
   template: `
     <div class="edit-page">
-      <div class="header-card">
-        <p class="eyebrow">Candidate Editor</p>
-        <h2>Edit candidate profile</h2>
-        <p>Review and correct extracted information before using it in filtering or smart search.</p>
-      </div>
-
       @if (candidate) {
+        <div class="profile-hero">
+          <button
+            class="star-toggle"
+            [class.active]="candidate.shortlisted"
+            (click)="toggleShortlist()"
+            [title]="candidate.shortlisted ? 'Remove from shortlist' : 'Add to shortlist'">
+            {{ candidate.shortlisted ? '★' : '☆' }}
+          </button>
+
+          <div class="profile-main">
+            <div class="avatar">{{ initials(candidate.fullName) }}</div>
+            <div>
+              <p class="eyebrow">Candidate Profile</p>
+              <h2>{{ candidate.fullName || 'Unnamed candidate' }}</h2>
+              <p class="profile-title">{{ candidate.currentJobTitle || 'No job title' }}</p>
+              <div class="profile-meta">
+                @if (candidate.address) {
+                  <span>{{ candidate.address }}</span>
+                }
+                @if (candidate.linkedinUrl) {
+                  <a [href]="candidate.linkedinUrl" target="_blank" rel="noopener">LinkedIn</a>
+                }
+                @if (candidate.githubUrl) {
+                  <a [href]="candidate.githubUrl" target="_blank" rel="noopener">GitHub</a>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-actions">
+            @if (candidate.aiMatchScore !== null) {
+              <div class="match-card">
+                <span>AI Match</span>
+                <strong>{{ candidate.aiMatchScore }}%</strong>
+              </div>
+            }
+            <button class="icon-btn" (click)="viewCv()" [disabled]="!candidate.alfrescoNodeId"><span>View</span>View CV</button>
+            <button class="icon-btn" (click)="downloadCv()" [disabled]="!candidate.alfrescoNodeId"><span>Down</span>Download CV</button>
+          </div>
+        </div>
+
+        @if (hasParsingWarnings()) {
+          <div class="warning-card">
+            <strong>Review required</strong>
+            @for (warning of parsingWarningList(); track warning) {
+              <span>{{ warning }}</span>
+            }
+          </div>
+        }
         <div class="form-card">
           <div class="form-grid">
             <div class="field">
               <label>Name</label>
-              <input [(ngModel)]="candidate.fullName" />
+              <input [(ngModel)]="candidate.fullName" [class.missing-field]="isMissing(candidate.fullName)" />
             </div>
 
             <div class="field">
               <label>Email</label>
-              <input [(ngModel)]="candidate.email" />
+              <input [(ngModel)]="candidate.email" [class.missing-field]="isMissing(candidate.email)" />
             </div>
 
             <div class="field">
@@ -41,7 +85,7 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
 
             <div class="field">
               <label>Job Title</label>
-              <input [(ngModel)]="candidate.currentJobTitle" />
+              <input [(ngModel)]="candidate.currentJobTitle" [class.missing-field]="isMissing(candidate.currentJobTitle)" />
             </div>
 
             <div class="field">
@@ -82,8 +126,22 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
             </div>
 
             <div class="field field-wide">
+              <label>Status</label>
+              <div class="status-segmented">
+                @for (status of statuses; track status) {
+                  <button
+                    type="button"
+                    [class.active]="candidate.status === status"
+                    (click)="candidate.status = status">
+                    {{ statusLabel(status) }}
+                  </button>
+                }
+              </div>
+            </div>
+
+            <div class="field field-wide">
               <label>Skills (comma separated)</label>
-              <input [(ngModel)]="skillsText" />
+              <input [(ngModel)]="skillsText" [class.missing-field]="!skillsText.trim()" />
             </div>
 
             <div class="field field-wide">
@@ -113,7 +171,9 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
           </div>
 
           <div class="action-row">
-            <button class="primary-btn" (click)="save()">✓ Save Changes</button>
+            <button class="primary-btn" (click)="save()" [disabled]="saving">
+              {{ saving ? 'Saving...' : 'Save Changes' }}
+            </button>
             <button class="secondary-btn" (click)="goBack()">← Cancel</button>
           </div>
 
@@ -163,13 +223,164 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
       color: var(--text);
     }
 
-    .header-card,
+    .profile-hero,
+    .warning-card,
     .form-card {
       padding: 24px;
-      border-radius: 24px;
-      background: var(--surface);
+      border-radius: 20px;
+      background: linear-gradient(145deg, var(--surface), rgba(255,255,255,0.025));
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .profile-hero {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    .profile-main {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .avatar {
+      width: 68px;
+      height: 68px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 20px;
+      color: white;
+      font-weight: 900;
+      font-size: 22px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      box-shadow: 0 14px 28px rgba(79,70,229,0.22);
+    }
+
+    .profile-main h2 {
+      margin: 0 0 6px;
+      color: var(--heading);
+      font-size: 32px;
+      line-height: 1.1;
+    }
+
+    .profile-title {
+      margin: 0;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .profile-meta {
+      display: flex;
+      gap: 9px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .profile-meta span,
+    .profile-meta a {
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: #c7d2fe;
+      background: rgba(79,70,229,0.16);
+      border: 1px solid rgba(99,102,241,0.22);
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding-right: 54px;
+    }
+
+    .match-card {
+      min-width: 92px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      color: white;
+      text-align: center;
+      background: linear-gradient(135deg, #22c55e, var(--accent-2));
+      box-shadow: 0 12px 26px rgba(6,182,212,0.18);
+    }
+
+    .match-card span {
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      opacity: 0.82;
+    }
+
+    .match-card strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 18px;
+    }
+
+    .star-toggle {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      z-index: 2;
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: #c7d2fe;
+      background: var(--surface-2);
+      cursor: pointer;
+      font-size: 24px;
+      transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+    }
+
+    .star-toggle:hover {
+      transform: translateY(-2px) scale(1.04);
+      border-color: rgba(6,182,212,0.28);
+      box-shadow: 0 12px 26px rgba(6,182,212,0.12);
+    }
+
+    .star-toggle.active {
+      color: #fef3c7;
+      background: rgba(245,158,11,0.16);
+      border-color: rgba(245,158,11,0.34);
+      box-shadow: 0 0 0 4px rgba(245,158,11,0.08), 0 12px 26px rgba(245,158,11,0.12);
+    }
+
+    .warning-card {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: #fef3c7;
+      background: rgba(245,158,11,0.14);
+      border-color: rgba(245,158,11,0.28);
+      font-weight: 800;
+    }
+
+    .warning-card strong {
+      width: 100%;
+      color: var(--heading);
+    }
+
+    .warning-card span {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(245,158,11,0.18);
+      border: 1px solid rgba(245,158,11,0.30);
+      font-size: 12px;
+      font-weight: 900;
     }
 
     .eyebrow {
@@ -182,18 +393,6 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
 
     :host-context(.light-theme-root) .eyebrow {
       color: #2563eb;
-    }
-
-    .header-card h2 {
-      margin: 0 0 8px;
-      font-size: 30px;
-      color: var(--heading);
-    }
-
-    .header-card p:last-child {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.7;
     }
 
     .form-grid {
@@ -224,6 +423,20 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
       background: var(--surface-2);
       color: var(--text);
       outline: none;
+      transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus {
+      border-color: rgba(6,182,212,0.30);
+      box-shadow: 0 0 0 4px rgba(6,182,212,0.08);
+    }
+
+    .field input.missing-field {
+      border-color: rgba(245,158,11,0.62);
+      background: rgba(245,158,11,0.10);
+      box-shadow: 0 0 0 4px rgba(245,158,11,0.08);
     }
 
     .field textarea {
@@ -250,13 +463,36 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
     }
 
     .primary-btn,
-    .secondary-btn {
+    .secondary-btn,
+    .icon-btn {
       border: none;
       cursor: pointer;
       border-radius: 14px;
       padding: 13px 18px;
       font-weight: 800;
       transition: 0.2s ease;
+    }
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .icon-btn span {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 9px;
+      color: transparent;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      box-shadow: 0 8px 16px rgba(79,70,229,0.18);
     }
 
     .primary-btn {
@@ -272,8 +508,44 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
     }
 
     .primary-btn:hover,
-    .secondary-btn:hover {
+    .secondary-btn:hover,
+    .icon-btn:hover {
       transform: translateY(-1px);
+    }
+
+    .status-segmented {
+      display: flex;
+      gap: 6px;
+      padding: 6px;
+      overflow-x: auto;
+      border-radius: 18px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+
+    .status-segmented button {
+      flex: 0 0 auto;
+      min-width: 96px;
+      border: 0;
+      border-radius: 13px;
+      padding: 10px 12px;
+      cursor: pointer;
+      color: var(--muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 900;
+      transition: transform 0.22s ease, box-shadow 0.22s ease, color 0.22s ease, background 0.22s ease;
+    }
+
+    .status-segmented button:hover {
+      color: var(--heading);
+      transform: translateY(-1px);
+    }
+
+    .status-segmented button.active {
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      box-shadow: 0 10px 22px rgba(6,182,212,0.18);
     }
 
     .message-box {
@@ -294,6 +566,15 @@ import { CandidateService, CandidateResponse } from '../../services/candidate.se
       .field-wide {
         grid-column: span 1;
       }
+
+      .profile-hero {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-actions {
+        justify-content: flex-start;
+        padding-right: 0;
+      }
     }
   `]
 })
@@ -303,6 +584,7 @@ export class EditCandidateComponent {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private candidateService = inject(CandidateService);
+  private toastService = inject(ToastService);
 
   candidate: CandidateResponse | null = null;
   skillsText = '';
@@ -314,6 +596,8 @@ export class EditCandidateComponent {
   experienceYears: number | null = null;
   experienceMonths: number | null = null;
   message = '';
+  saving = false;
+  readonly statuses: CandidateStatus[] = ['NEEDS_REVIEW', 'NEW', 'REVIEWED', 'INTERVIEW', 'REJECTED', 'HIRED'];
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -340,6 +624,7 @@ export class EditCandidateComponent {
 
   save(): void {
     if (!this.candidate) return;
+    this.saving = true;
 
     this.candidate.skills = this.skillsText
       .split(',')
@@ -361,15 +646,87 @@ export class EditCandidateComponent {
 
     this.candidateService.updateCandidate(this.candidate.id, this.candidate).subscribe({
       next: () => {
-        this.message = 'Candidate updated successfully';
-        setTimeout(() => this.router.navigate(['/candidates']), 700);
+        this.candidateService.updateStatus(this.candidate!.id, this.candidate!.status).subscribe({
+          next: () => {
+            this.saving = false;
+            this.message = 'Candidate updated successfully';
+            this.toastService.show('Candidate saved', 'The candidate profile was updated.', 'success');
+            setTimeout(() => this.router.navigate(['/candidates']), 700);
+          },
+          error: (err) => {
+            this.saving = false;
+            this.message = err?.error?.message || 'Status update failed';
+            this.toastService.show('Save failed', this.message, 'error');
+          }
+        });
       },
-      error: (err) => this.message = err?.error?.message || 'Update failed'
+      error: (err) => {
+        this.saving = false;
+        this.message = err?.error?.message || 'Update failed';
+        this.toastService.show('Save failed', this.message, 'error');
+      }
     });
   }
 
   goBack(): void {
     this.router.navigate(['/candidates']);
+  }
+
+  viewCv(): void {
+    if (!this.candidate) {
+      return;
+    }
+    this.candidateService.viewCv(this.candidate.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener');
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      },
+      error: () => this.toastService.show('CV view failed', 'Could not open the original CV.', 'error')
+    });
+  }
+
+  downloadCv(): void {
+    if (!this.candidate) {
+      return;
+    }
+    this.candidateService.downloadCv(this.candidate.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = this.candidate?.cvFileName || 'candidate-cv';
+        link.click();
+        URL.revokeObjectURL(url);
+      },
+      error: () => this.toastService.show('CV download failed', 'Could not download the original CV.', 'error')
+    });
+  }
+
+  toggleShortlist(): void {
+    if (!this.candidate) {
+      return;
+    }
+    this.candidateService.toggleShortlist(this.candidate.id).subscribe({
+      next: (updated) => this.candidate = updated,
+      error: () => this.toastService.show('Shortlist failed', 'Could not update shortlist state.', 'error')
+    });
+  }
+
+  initials(name: string | null | undefined): string {
+    const parts = (name || 'Candidate').trim().split(/\s+/).filter(Boolean).slice(0, 2);
+    return parts.map((part) => part.charAt(0).toUpperCase()).join('') || 'CV';
+  }
+
+  statusLabel(status: string | null | undefined): string {
+    if (!status) {
+      return 'New';
+    }
+    return status
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
   }
 
   private setExperienceFields(value: number | null | undefined): void {
@@ -389,5 +746,42 @@ export class EditCandidateComponent {
       .split(/\r?\n/)
       .map(v => v.trim())
       .filter(v => v.length > 0);
+  }
+
+  hasParsingWarnings(): boolean {
+    if (!this.candidate) {
+      return false;
+    }
+
+    return Boolean(this.candidate.parsingWarnings?.length)
+      || this.isMissing(this.candidate.fullName)
+      || this.isMissing(this.candidate.email)
+      || this.isMissing(this.candidate.currentJobTitle)
+      || !this.skillsText.trim();
+  }
+
+  isMissing(value: string | null | undefined): boolean {
+    return !value || value.trim().toLowerCase() === 'unknown';
+  }
+
+  parsingWarningList(): string[] {
+    if (!this.candidate) {
+      return [];
+    }
+
+    const warnings = [...(this.candidate.parsingWarnings || [])];
+    if (this.isMissing(this.candidate.fullName) && !warnings.includes('Missing full name')) {
+      warnings.push('Missing full name');
+    }
+    if (this.isMissing(this.candidate.email) && !warnings.includes('Missing email')) {
+      warnings.push('Missing email');
+    }
+    if (this.isMissing(this.candidate.currentJobTitle) && !warnings.includes('Missing current job title')) {
+      warnings.push('Missing current job title');
+    }
+    if (!this.skillsText.trim() && !warnings.includes('Missing skills')) {
+      warnings.push('Missing skills');
+    }
+    return warnings;
   }
 }

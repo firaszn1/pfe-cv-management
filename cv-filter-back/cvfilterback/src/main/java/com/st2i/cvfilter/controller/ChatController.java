@@ -4,6 +4,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import com.st2i.cvfilter.dto.ChatRequest;
 import com.st2i.cvfilter.dto.ChatResponse;
@@ -20,6 +21,7 @@ public class ChatController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
     public ChatResponse chat(@RequestBody ChatRequest request) {
         return chatService.reply(request);
     }

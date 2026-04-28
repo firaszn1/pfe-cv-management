@@ -41,9 +41,11 @@ public class KeycloakAdminService {
 
     private final RestTemplate restTemplate;
     private final KeycloakAdminProperties properties;
+    private final AuditLogService auditLogService;
 
-    public KeycloakAdminService(KeycloakAdminProperties properties) {
+    public KeycloakAdminService(KeycloakAdminProperties properties, AuditLogService auditLogService) {
         this.properties = properties;
+        this.auditLogService = auditLogService;
         this.restTemplate = new RestTemplate();
     }
 
@@ -131,8 +133,10 @@ public class KeycloakAdminService {
             }
 
             updatePassword(userId, request.getPassword());
-            updateRealmRoles(userId, request.getRoles());
-            return getUserById(userId);
+            updateRealmRoles(userId, List.of(HR_ROLE));
+            AdminUserResponse created = getUserById(userId);
+            auditLogService.log("HR_USER_CREATED", "USER", created.getId(), created.getUsername(), "HR user created");
+            return created;
         } catch (HttpStatusCodeException ex) {
             throw translateException(ex, "Unable to create user");
         }
@@ -170,9 +174,16 @@ public class KeycloakAdminService {
     }
 
     public AdminUserResponse updateUser(String id, AdminUserRequest request) {
+        return updateUser(id, request, null);
+    }
+
+    public AdminUserResponse updateUser(String id, AdminUserRequest request, String currentAdminId) {
         Map<String, Object> existingUser = getRawUser(id);
-        if (request.getEnabled() == Boolean.FALSE && hasRealmRole(id, ADMIN_ROLE)) {
-            throw new IllegalArgumentException("ADMIN users cannot be disabled from the app. Use the Keycloak console.");
+        if (id != null && id.equals(currentAdminId) && request.getEnabled() == Boolean.FALSE) {
+            throw new IllegalArgumentException("You cannot disable your own admin account.");
+        }
+        if (hasRealmRole(id, ADMIN_ROLE)) {
+            throw new IllegalArgumentException("ADMIN users are read-only in the app. Use the Keycloak console.");
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -199,15 +210,29 @@ public class KeycloakAdminService {
                 updateRealmRoles(id, request.getRoles());
             }
 
-            return getUserById(id);
+            AdminUserResponse updated = getUserById(id);
+            Boolean previousEnabled = asBoolean(existingUser.get("enabled"));
+            String action = "HR_USER_UPDATED";
+            if (Boolean.TRUE.equals(previousEnabled) && Boolean.FALSE.equals(request.getEnabled())) {
+                action = "HR_USER_DISABLED";
+            } else if (Boolean.FALSE.equals(previousEnabled) && Boolean.TRUE.equals(request.getEnabled())) {
+                action = "HR_USER_ENABLED";
+            }
+            auditLogService.log(action, "USER", updated.getId(), updated.getUsername(), "User updated");
+            return updated;
         } catch (HttpStatusCodeException ex) {
             throw translateException(ex, "Unable to update user");
         }
     }
 
     public AdminUserResponse updateUserRoles(String id, UpdateUserRolesRequest request) {
+        if (hasRealmRole(id, ADMIN_ROLE)) {
+            throw new IllegalArgumentException("ADMIN users are read-only in the app. Use the Keycloak console.");
+        }
         updateRealmRoles(id, request == null ? List.of() : request.getRoles());
-        return getUserById(id);
+        AdminUserResponse updated = getUserById(id);
+        auditLogService.log("HR_USER_ROLES_UPDATED", "USER", updated.getId(), updated.getUsername(), "Roles updated");
+        return updated;
     }
 
     public AdminUserResponse approvePendingUser(String id) {
@@ -232,14 +257,18 @@ public class KeycloakAdminService {
                     Void.class
             );
             updateRealmRoles(id, List.of(HR_ROLE));
-            return getUserById(id);
+            AdminUserResponse approved = getUserById(id);
+            auditLogService.log("HR_USER_APPROVED", "USER", approved.getId(), approved.getUsername(), "Approved and assigned HR role");
+            return approved;
         } catch (HttpStatusCodeException ex) {
             throw translateException(ex, "Unable to approve user");
         }
     }
 
     public void rejectPendingUser(String id, String currentAdminId) {
+        AdminUserResponse user = getUserById(id);
         deleteUser(id, currentAdminId);
+        auditLogService.log("HR_USER_REJECTED", "USER", id, user.getUsername(), "Pending HR request rejected");
     }
 
     public void deleteUser(String id, String currentAdminId) {
@@ -247,7 +276,7 @@ public class KeycloakAdminService {
             throw new IllegalArgumentException("You cannot delete your own admin account.");
         }
 
-        getRawUser(id);
+        Map<String, Object> user = getRawUser(id);
         if (hasRealmRole(id, ADMIN_ROLE)) {
             throw new IllegalArgumentException("ADMIN users cannot be deleted from the app. Use the Keycloak console.");
         }
@@ -259,6 +288,7 @@ public class KeycloakAdminService {
                     new HttpEntity<>(adminHeaders()),
                     Void.class
             );
+            auditLogService.log("HR_USER_DELETED", "USER", id, asString(user.get("username")), "HR user deleted");
         } catch (HttpStatusCodeException ex) {
             throw translateException(ex, "Unable to delete user");
         }

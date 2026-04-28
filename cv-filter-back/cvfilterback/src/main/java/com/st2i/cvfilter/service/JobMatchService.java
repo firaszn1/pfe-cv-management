@@ -21,7 +21,10 @@ public class JobMatchService {
     }
 
     public JobMatchResponse match(JobMatchRequest request) {
-        String description = request == null || request.getDescription() == null ? "" : request.getDescription();
+        String description = sanitize(request == null ? null : request.getDescription());
+        if (description.length() > 12000) {
+            throw new IllegalArgumentException("Job description is too long. Maximum allowed length is 12000 characters.");
+        }
         QuerySignals signals = candidateScoringService.extractSignals(description);
 
         JobMatchResponse response = new JobMatchResponse();
@@ -32,5 +35,14 @@ public class JobMatchService {
                 ? List.of()
                 : candidateService.smartSearch(new SmartSearchRequest(description)));
         return response;
+    }
+
+    private String sanitize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", "")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 }

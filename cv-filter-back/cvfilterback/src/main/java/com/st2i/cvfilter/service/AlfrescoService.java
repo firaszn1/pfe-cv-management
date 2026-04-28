@@ -93,6 +93,22 @@ public class AlfrescoService {
         );
     }
 
+    public boolean deleteFile(String nodeId) {
+        if (nodeId == null || nodeId.isBlank()) {
+            return true;
+        }
+
+        try {
+            restClient.delete()
+                    .uri("/alfresco/api/-default-/public/alfresco/versions/1/nodes/{nodeId}", nodeId)
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (RestClientException ex) {
+            return false;
+        }
+    }
+
     private String extractNodeId(Map<?, ?> response) {
         if (response == null) {
             return null;

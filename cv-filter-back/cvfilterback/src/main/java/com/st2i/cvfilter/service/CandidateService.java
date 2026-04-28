@@ -9,13 +9,20 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import com.st2i.cvfilter.dto.CandidateFilterRequest;
+import com.st2i.cvfilter.dto.CandidatePageResponse;
 import com.st2i.cvfilter.dto.CandidateResponse;
 import com.st2i.cvfilter.dto.DashboardStatsResponse;
+import com.st2i.cvfilter.dto.ScoreBreakdownResponse;
 import com.st2i.cvfilter.dto.SkillCountResponse;
 import com.st2i.cvfilter.dto.SmartSearchRequest;
 import com.st2i.cvfilter.dto.UploadCandidateResponse;
@@ -28,6 +35,9 @@ import com.st2i.cvfilter.service.CandidateScoringService.QuerySignals;
 public class CandidateService {
 
     private static final int MAX_EMBED_TEXT_LENGTH = 600;
+    private static final long MAX_UPLOAD_SIZE_BYTES = 10L * 1024L * 1024L;
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[0-9][0-9\\s\\-()]{6,20}$");
 
     private final CandidateRepository candidateRepository;
     private final CvTextExtractorService cvTextExtractorService;
@@ -35,6 +45,7 @@ public class CandidateService {
     private final OllamaEmbeddingService ollamaEmbeddingService;
     private final CandidateScoringService candidateScoringService;
     private final AlfrescoService alfrescoService;
+    private final AuditLogService auditLogService;
 
     public CandidateService(
             CandidateRepository candidateRepository,
@@ -42,7 +53,8 @@ public class CandidateService {
             CandidateParserService candidateParserService,
             OllamaEmbeddingService ollamaEmbeddingService,
             CandidateScoringService candidateScoringService,
-            AlfrescoService alfrescoService
+            AlfrescoService alfrescoService,
+            AuditLogService auditLogService
     ) {
         this.candidateRepository = candidateRepository;
         this.cvTextExtractorService = cvTextExtractorService;
@@ -50,6 +62,7 @@ public class CandidateService {
         this.ollamaEmbeddingService = ollamaEmbeddingService;
         this.candidateScoringService = candidateScoringService;
         this.alfrescoService = alfrescoService;
+        this.auditLogService = auditLogService;
     }
 
     public UploadCandidateResponse uploadCv(MultipartFile file) throws IOException {
@@ -62,6 +75,8 @@ public class CandidateService {
                 file.getContentType(),
                 extractedText
         );
+        candidate.setParsingWarnings(buildParsingWarnings(candidate));
+        candidate.setStatus(candidate.getParsingWarnings().isEmpty() ? "NEW" : "NEEDS_REVIEW");
 
         String alfrescoNodeId = alfrescoService.uploadFile(file);
         candidate.setAlfrescoNodeId(alfrescoNodeId);
@@ -71,11 +86,15 @@ public class CandidateService {
         Candidate saved = candidateRepository.save(candidate);
         saved.setAlfrescoFileUrl(cvDownloadUrl(saved.getId()));
         saved = candidateRepository.save(saved);
+        auditLogService.log("CV_UPLOADED", "CANDIDATE", saved.getId(), saved.getFullName(), saved.getCvFileName());
 
         UploadCandidateResponse response = new UploadCandidateResponse();
         response.setCandidateId(saved.getId());
         response.setFileName(saved.getCvFileName());
-        response.setMessage("CV uploaded successfully");
+        String duplicateWarning = duplicateWarning(candidate, saved.getId());
+        response.setMessage(duplicateWarning == null
+                ? "CV uploaded successfully"
+                : "CV uploaded successfully. " + duplicateWarning);
         return response;
     }
 
@@ -87,13 +106,36 @@ public class CandidateService {
         return responses;
     }
 
+    public CandidatePageResponse getCandidatesPage(Integer page, Integer size, String sort) {
+        int safePage = page == null || page < 0 ? 0 : page;
+        int safeSize = size == null || size <= 0 ? 10 : Math.min(size, 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize, parseSort(sort));
+        Page<Candidate> candidatePage = candidateRepository.findAll(pageable);
+
+        if (candidatePage.getTotalPages() > 0 && safePage >= candidatePage.getTotalPages()) {
+            pageable = PageRequest.of(candidatePage.getTotalPages() - 1, safeSize, parseSort(sort));
+            candidatePage = candidateRepository.findAll(pageable);
+        }
+
+        List<CandidateResponse> content = candidatePage.getContent().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+
+        return new CandidatePageResponse(
+                content,
+                candidatePage.getTotalElements(),
+                candidatePage.getTotalPages(),
+                candidatePage.getNumber()
+        );
+    }
+
     public CandidateResponse getCandidateById(String id) {
         Candidate candidate = candidateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate not found"));
         return toResponse(candidate);
     }
 
-    public AlfrescoDocument downloadOriginalCv(String id) {
+    public AlfrescoDocument downloadOriginalCv(String id, String action) {
         Candidate candidate = candidateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate not found"));
 
@@ -101,16 +143,19 @@ public class CandidateService {
             throw new ResourceNotFoundException("Original CV document not found in Alfresco");
         }
 
-        return alfrescoService.downloadFile(
+        AlfrescoDocument document = alfrescoService.downloadFile(
                 candidate.getAlfrescoNodeId(),
                 candidate.getCvFileName(),
                 candidate.getContentType()
         );
+        auditLogService.log(action, "CANDIDATE", candidate.getId(), candidate.getFullName(), candidate.getCvFileName());
+        return document;
     }
 
     public CandidateResponse updateCandidate(String id, Candidate updated) {
         Candidate existing = candidateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate not found"));
+        validateCandidateData(updated, id);
 
         existing.setFullName(updated.getFullName());
         existing.setEmail(updated.getEmail());
@@ -129,17 +174,61 @@ public class CandidateService {
         existing.setExperienceEntries(updated.getExperienceEntries());
         existing.setProjectEntries(updated.getProjectEntries());
         existing.setCertifications(updated.getCertifications());
+        existing.setParsingWarnings(buildParsingWarnings(existing));
+        if (!existing.getParsingWarnings().isEmpty()) {
+            existing.setStatus("NEEDS_REVIEW");
+        }
 
         existing.setEmbedding(ollamaEmbeddingService.createEmbedding(buildSearchableText(existing)));
 
         Candidate saved = candidateRepository.save(existing);
+        auditLogService.log("CANDIDATE_EDITED", "CANDIDATE", saved.getId(), saved.getFullName(), "Candidate profile updated");
         return toResponse(saved);
     }
 
     public void deleteCandidate(String id) {
         Candidate candidate = candidateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate not found"));
+        boolean alfrescoDeleted = alfrescoService.deleteFile(candidate.getAlfrescoNodeId());
         candidateRepository.delete(candidate);
+        auditLogService.log("CANDIDATE_DELETED", "CANDIDATE", candidate.getId(), candidate.getFullName(), "Candidate deleted");
+        if (!alfrescoDeleted) {
+            auditLogService.log("ALFRESCO_DELETE_FAILED", "CANDIDATE", candidate.getId(), candidate.getFullName(),
+                    "Candidate deleted from MongoDB, but Alfresco node cleanup failed: " + candidate.getAlfrescoNodeId());
+        }
+    }
+
+    public CandidateResponse updateStatus(String id, String status) {
+        Candidate candidate = candidateRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidate not found"));
+        String normalizedStatus = normalizeStatus(status);
+        candidate.setParsingWarnings(buildParsingWarnings(candidate));
+        if (!candidate.getParsingWarnings().isEmpty()) {
+            normalizedStatus = "NEEDS_REVIEW";
+        }
+        String previousStatus = candidate.getStatus();
+        candidate.setStatus(normalizedStatus);
+        Candidate saved = candidateRepository.save(candidate);
+        auditLogService.log("CANDIDATE_STATUS_CHANGED", "CANDIDATE", saved.getId(), saved.getFullName(),
+                "Status changed from " + valueOrUnknown(previousStatus) + " to " + normalizedStatus);
+        return toResponse(saved);
+    }
+
+    public CandidateResponse toggleShortlist(String id) {
+        Candidate candidate = candidateRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidate not found"));
+        boolean nextValue = candidate.getShortlisted() == null || !candidate.getShortlisted();
+        candidate.setShortlisted(nextValue);
+        Candidate saved = candidateRepository.save(candidate);
+        auditLogService.log(nextValue ? "CANDIDATE_SHORTLISTED" : "CANDIDATE_UNSHORTLISTED",
+                "CANDIDATE", saved.getId(), saved.getFullName(), "Shortlisted: " + nextValue);
+        return toResponse(saved);
+    }
+
+    public List<CandidateResponse> getShortlistedCandidates() {
+        return candidateRepository.findByShortlistedTrue().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
 
     public List<CandidateResponse> filterCandidates(CandidateFilterRequest request) {
@@ -196,6 +285,13 @@ public class CandidateService {
                 }
             }
 
+            if (request.getStatus() != null && !request.getStatus().isBlank()) {
+                if (candidate.getStatus() == null ||
+                        !candidate.getStatus().equalsIgnoreCase(request.getStatus())) {
+                    continue;
+                }
+            }
+
             responses.add(toResponse(candidate));
         }
 
@@ -208,6 +304,9 @@ public class CandidateService {
         }
 
         String query = normalizeText(request.getQuery());
+        if (query.length() > 2000) {
+            throw new IllegalArgumentException("Search query is too long. Maximum allowed length is 2000 characters.");
+        }
         QuerySignals signals = candidateScoringService.extractSignals(query);
         List<Candidate> candidates = candidateRepository.findAll().stream()
                 .filter(candidate -> candidateScoringService.matchesRequiredSeniority(candidate, signals))
@@ -221,7 +320,17 @@ public class CandidateService {
 
         if (queryEmbedding.isEmpty()) {
             return candidates.stream()
-                    .map(this::toResponse)
+                    .map(candidate -> {
+                        ScoreBreakdownResponse breakdown = candidateScoringService.score(candidate, signals);
+                        CandidateResponse response = toResponse(candidate);
+                        response.setAiMatchScore(breakdown.getGlobalScore());
+                        response.setScoreBreakdown(breakdown);
+                        return response;
+                    })
+                    .sorted(Comparator.comparing(
+                            CandidateResponse::getAiMatchScore,
+                            Comparator.nullsLast(Comparator.reverseOrder())
+                    ))
                     .limit(10)
                     .collect(Collectors.toList());
         }
@@ -256,6 +365,27 @@ public class CandidateService {
                     return response;
                 })
                 .collect(Collectors.toList());
+    }
+
+    public int regenerateMissingEmbeddings() {
+        int updated = 0;
+        for (Candidate candidate : candidateRepository.findAll()) {
+            if (candidate.getEmbedding() != null && !candidate.getEmbedding().isEmpty()) {
+                continue;
+            }
+
+            List<Double> embedding = ollamaEmbeddingService.createEmbedding(buildSearchableText(candidate));
+            if (embedding.isEmpty()) {
+                continue;
+            }
+
+            candidate.setEmbedding(embedding);
+            candidateRepository.save(candidate);
+            updated++;
+        }
+        auditLogService.log("EMBEDDINGS_REGENERATED", "AI", null, "Candidate embeddings",
+                "Regenerated missing embeddings for " + updated + " candidates");
+        return updated;
     }
 
     public DashboardStatsResponse getDashboardStats() {
@@ -322,7 +452,44 @@ public class CandidateService {
         response.setCreatedAt(candidate.getCreatedAt());
         response.setAiMatchScore(null);
         response.setScoreBreakdown(null);
+        response.setStatus(candidate.getStatus() == null || candidate.getStatus().isBlank() ? "NEW" : candidate.getStatus());
+        response.setShortlisted(Boolean.TRUE.equals(candidate.getShortlisted()));
+        response.setParsingWarnings(buildParsingWarnings(candidate));
         return response;
+    }
+
+    private String normalizeStatus(String status) {
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("Candidate status is required");
+        }
+
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("NEEDS_REVIEW", "NEW", "REVIEWED", "SHORTLISTED", "INTERVIEW", "REJECTED", "HIRED").contains(normalized)) {
+            throw new IllegalArgumentException("Unsupported candidate status: " + status);
+        }
+        return normalized;
+    }
+
+    private String valueOrUnknown(String value) {
+        return value == null || value.isBlank() ? "UNKNOWN" : value;
+    }
+
+    private Sort parseSort(String sort) {
+        if (sort == null || sort.isBlank()) {
+            return Sort.by(Sort.Direction.DESC, "createdAt");
+        }
+
+        String[] parts = sort.split(",");
+        String property = parts[0] == null ? "" : parts[0].trim();
+        if (property.isBlank()) {
+            return Sort.unsorted();
+        }
+
+        Sort.Direction direction = Sort.Direction.ASC;
+        if (parts.length > 1 && "desc".equalsIgnoreCase(parts[1].trim())) {
+            direction = Sort.Direction.DESC;
+        }
+        return Sort.by(direction, property);
     }
 
     private double convertSimilarityToPercent(double similarity) {
@@ -350,6 +517,9 @@ public class CandidateService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("File is required");
         }
+        if (file.getSize() > MAX_UPLOAD_SIZE_BYTES) {
+            throw new IllegalArgumentException("Uploaded file is too large. Maximum allowed size is 10MB.");
+        }
 
         String fileName = file.getOriginalFilename();
         if (fileName == null || fileName.isBlank()) {
@@ -360,6 +530,75 @@ public class CandidateService {
         if (!lower.endsWith(".pdf") && !lower.endsWith(".docx")) {
             throw new IllegalArgumentException("Only PDF and DOCX files are allowed");
         }
+    }
+
+    private void validateCandidateData(Candidate candidate, String currentCandidateId) {
+        if (candidate.getEmail() != null && !candidate.getEmail().isBlank()
+                && !EMAIL_PATTERN.matcher(candidate.getEmail().trim()).matches()) {
+            throw new IllegalArgumentException("Invalid email format");
+        }
+
+        if (candidate.getPhone() != null && !candidate.getPhone().isBlank()
+                && !PHONE_PATTERN.matcher(candidate.getPhone().trim()).matches()) {
+            throw new IllegalArgumentException("Invalid phone format");
+        }
+
+        String duplicateWarning = duplicateWarning(candidate, currentCandidateId);
+        if (duplicateWarning != null) {
+            throw new IllegalArgumentException(duplicateWarning);
+        }
+    }
+
+    private String duplicateWarning(Candidate candidate, String currentCandidateId) {
+        for (Candidate existing : candidateRepository.findAll()) {
+            if (existing.getId() != null && existing.getId().equals(currentCandidateId)) {
+                continue;
+            }
+
+            if (candidate.getEmail() != null && existing.getEmail() != null
+                    && candidate.getEmail().equalsIgnoreCase(existing.getEmail())) {
+                return "A candidate with the same email already exists: " + existing.getFullName();
+            }
+
+            if (isSimilarName(candidate.getFullName(), existing.getFullName())) {
+                return "A candidate with a very similar name already exists: " + existing.getFullName();
+            }
+        }
+        return null;
+    }
+
+    private boolean isSimilarName(String first, String second) {
+        String a = normalizeText(first).toLowerCase(Locale.ROOT);
+        String b = normalizeText(second).toLowerCase(Locale.ROOT);
+        if (a.length() < 5 || b.length() < 5 || "unknown".equals(a) || "unknown".equals(b)) {
+            return false;
+        }
+        return a.equals(b) || a.contains(b) || b.contains(a);
+    }
+
+    private boolean hasCriticalMissingFields(Candidate candidate) {
+        return !buildParsingWarnings(candidate).isEmpty();
+    }
+
+    private List<String> buildParsingWarnings(Candidate candidate) {
+        List<String> warnings = new ArrayList<>();
+        if (isBlankOrUnknown(candidate.getFullName())) {
+            warnings.add("Missing full name");
+        }
+        if (isBlankOrUnknown(candidate.getEmail())) {
+            warnings.add("Missing email");
+        }
+        if (isBlankOrUnknown(candidate.getCurrentJobTitle())) {
+            warnings.add("Missing current job title");
+        }
+        if (candidate.getSkills() == null || candidate.getSkills().isEmpty()) {
+            warnings.add("Missing skills");
+        }
+        return warnings;
+    }
+
+    private boolean isBlankOrUnknown(String value) {
+        return value == null || value.isBlank() || "unknown".equalsIgnoreCase(value.trim());
     }
 
     private String buildSearchableText(Candidate candidate) {

@@ -1,0 +1,19 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/cvdb}
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/cv-realm}
+
+alfresco:
+  base-url: ${ALFRESCO_BASE_URL:http://localhost:8082}
+
+keycloak-admin:
+  server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8080}

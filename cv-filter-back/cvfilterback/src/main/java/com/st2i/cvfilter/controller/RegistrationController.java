@@ -14,7 +14,7 @@ import jakarta.validation.Valid;
 
 @RestController
 @Validated
-@RequestMapping("/api/public")
+@RequestMapping("/api")
 public class RegistrationController {
 
     private final KeycloakAdminService keycloakAdminService;
@@ -23,7 +23,7 @@ public class RegistrationController {
         this.keycloakAdminService = keycloakAdminService;
     }
 
-    @PostMapping("/register")
+    @PostMapping({"/public/register", "/auth/register-request"})
     public AdminUserResponse register(@Valid @RequestBody AdminUserRequest request) {
         return keycloakAdminService.registerPendingUser(request);
     }

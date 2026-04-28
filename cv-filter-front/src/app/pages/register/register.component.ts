@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
+import { environment } from '../../../environments/environment';
 
 interface RegistrationRequest {
   username: string;
@@ -290,7 +291,7 @@ export class RegisterComponent {
     };
 
     this.loading = true;
-    this.http.post('http://localhost:8081/api/public/register', payload).subscribe({
+    this.http.post(`${environment.apiBaseUrl}/auth/register-request`, payload).subscribe({
       next: () => {
         this.loading = false;
         this.successMessage = 'Your account was created as disabled. An admin can now approve it from Admin Users.';

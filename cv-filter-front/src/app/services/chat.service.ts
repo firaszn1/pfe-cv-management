@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../environments/environment';
 import { CandidateResponse } from './candidate.service';
 
 export interface ChatRequest {
@@ -31,7 +32,7 @@ export interface ChatResponse {
 })
 export class ChatService {
   private http = inject(HttpClient);
-  private apiUrl = 'http://localhost:8081/api/chat';
+  private apiUrl = `${environment.apiBaseUrl}/chat`;
 
   send(request: ChatRequest): Observable<ChatResponse> {
     return this.http.post<ChatResponse>(this.apiUrl, request);

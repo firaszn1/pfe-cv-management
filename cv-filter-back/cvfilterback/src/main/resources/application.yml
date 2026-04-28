@@ -9,17 +9,17 @@ spring:
 
   data:
     mongodb:
-      uri: mongodb://localhost:27017/cvdb
+      uri: ${MONGODB_URI:mongodb://localhost:27017/cvdb}
 
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/cv-realm
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/cv-realm}
 
 ollama:
-  base-url: http://localhost:11434
-  embedding-model: embeddinggemma
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  embedding-model: ${OLLAMA_EMBEDDING_MODEL:embeddinggemma}
 
 keycloak-admin:
   server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8080}

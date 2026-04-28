@@ -1,0 +1,203 @@
+:root {
+  --cv-bg: #07111f;
+  --cv-panel: rgba(15, 23, 42, 0.88);
+  --cv-panel-strong: rgba(15, 23, 42, 0.96);
+  --cv-border: rgba(148, 163, 184, 0.22);
+  --cv-text: #e5eef8;
+  --cv-heading: #f8fafc;
+  --cv-muted: #9fb0c5;
+  --cv-accent: #06b6d4;
+  --cv-accent-2: #4f46e5;
+  --cv-danger: #ef4444;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--cv-text);
+  background:
+    linear-gradient(115deg, rgba(7, 17, 31, 0.92), rgba(15, 23, 42, 0.78)),
+    radial-gradient(circle at top right, rgba(6, 182, 212, 0.24), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(79, 70, 229, 0.22), transparent 32%),
+    url("../img/login-bg.svg") center/cover no-repeat;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.login-pf body {
+  background-color: var(--cv-bg);
+}
+
+.login-pf-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 520px);
+  align-items: center;
+  gap: 48px;
+  padding: 48px clamp(24px, 6vw, 92px);
+}
+
+.login-pf-page::before {
+  content: "CV SmartMatch";
+  align-self: center;
+  max-width: 620px;
+  color: var(--cv-heading);
+  font-size: clamp(44px, 6vw, 82px);
+  font-weight: 900;
+  line-height: 0.95;
+}
+
+.login-pf-page::after {
+  content: "A secure ATS workspace for CV intake, AI matching, shortlisting, and HR decisions.";
+  position: absolute;
+  left: clamp(24px, 6vw, 92px);
+  top: calc(50% + 76px);
+  max-width: 520px;
+  color: var(--cv-muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+#kc-header {
+  display: none;
+}
+
+.card-pf {
+  width: 100%;
+  margin: 0;
+  padding: 34px;
+  color: var(--cv-text);
+  background: var(--cv-panel);
+  border: 1px solid var(--cv-border);
+  border-radius: 22px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(18px);
+}
+
+#kc-page-title {
+  margin: 0 0 8px;
+  color: var(--cv-heading);
+  font-size: 30px;
+  font-weight: 900;
+}
+
+#kc-page-title::after {
+  content: "Sign in with your approved HR or ADMIN account.";
+  display: block;
+  margin-top: 10px;
+  color: var(--cv-muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+#kc-form {
+  margin-top: 24px;
+}
+
+.pf-v5-c-form__label,
+.pf-c-form__label,
+label {
+  color: var(--cv-muted) !important;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pf-v5-c-form-control,
+.pf-c-form-control,
+input[type="text"],
+input[type="password"] {
+  min-height: 48px;
+  color: var(--cv-heading) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid var(--cv-border) !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-form-control:focus,
+.pf-c-form-control:focus,
+input[type="text"]:focus,
+input[type="password"]:focus {
+  border-color: rgba(6, 182, 212, 0.58) !important;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.14) !important;
+}
+
+#kc-login,
+.pf-v5-c-button.pf-m-primary,
+.pf-c-button.pf-m-primary {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--cv-accent-2), var(--cv-accent));
+  font-weight: 900;
+  box-shadow: 0 16px 34px rgba(6, 182, 212, 0.22);
+}
+
+.cv-register-cta {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: 16px;
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.cv-register-cta p {
+  margin: 0 0 12px;
+  color: var(--cv-muted);
+  line-height: 1.5;
+}
+
+.cv-register-cta a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  width: 100%;
+  border-radius: 12px;
+  color: var(--cv-heading);
+  text-decoration: none;
+  font-weight: 900;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--cv-border);
+}
+
+.alert-error,
+.pf-v5-c-alert.pf-m-danger,
+.pf-c-alert.pf-m-danger {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.28);
+  border-radius: 14px;
+}
+
+#kc-info-wrapper,
+#kc-registration {
+  background: transparent;
+}
+
+a {
+  color: #a5f3fc;
+}
+
+@media (max-width: 880px) {
+  .login-pf-page {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 28px 18px;
+  }
+
+  .login-pf-page::before {
+    font-size: 42px;
+  }
+
+  .login-pf-page::after {
+    position: static;
+    max-width: none;
+    margin-top: -18px;
+    font-size: 15px;
+  }
+
+  .card-pf {
+    padding: 24px;
+  }
+}

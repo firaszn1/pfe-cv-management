@@ -37,24 +37,29 @@ public class OllamaEmbeddingService {
         requestBody.put("model", embeddingModel);
         requestBody.put("input", input);
 
-        Map<String, Object> response = restClient.post()
-                .uri("/api/embed")
-                .body(requestBody)
-                .retrieve()
-                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+        Map<String, Object> response;
+        try {
+            response = restClient.post()
+                    .uri("/api/embed")
+                    .body(requestBody)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+        } catch (RuntimeException ex) {
+            return new ArrayList<>();
+        }
 
         if (response == null || !response.containsKey("embeddings")) {
-            throw new IllegalStateException("Invalid response from Ollama embed API");
+            return new ArrayList<>();
         }
 
         Object embeddingsObject = response.get("embeddings");
         if (!(embeddingsObject instanceof List<?> embeddingsList) || embeddingsList.isEmpty()) {
-            throw new IllegalStateException("Ollama response contains no embeddings");
+            return new ArrayList<>();
         }
 
         Object firstEmbedding = embeddingsList.get(0);
         if (!(firstEmbedding instanceof List<?> vectorList)) {
-            throw new IllegalStateException("Invalid embedding vector format");
+            return new ArrayList<>();
         }
 
         List<Double> result = new ArrayList<>();
