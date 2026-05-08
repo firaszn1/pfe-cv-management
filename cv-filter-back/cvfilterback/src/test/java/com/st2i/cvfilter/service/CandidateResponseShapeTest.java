@@ -64,7 +64,11 @@ class CandidateResponseShapeTest {
         assertThat(response.getExperienceEntries()).isEmpty();
         assertThat(response.getProjectEntries()).isEmpty();
         assertThat(response.getCertifications()).isEmpty();
-        assertThat(response.getParsingWarnings()).containsExactly("Missing current job title", "Missing skills");
+        assertThat(response.getParsingWarnings()).containsExactly(
+                "Job title missing or untrusted",
+                "Experience uncertain",
+                "Missing skills"
+        );
         assertThat(response.getStatus()).isEqualTo("NEW");
         assertThat(response.getShortlisted()).isFalse();
         assertThat(response.getAiMatchScore()).isNull();

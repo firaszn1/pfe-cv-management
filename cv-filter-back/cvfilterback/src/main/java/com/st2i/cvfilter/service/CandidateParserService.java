@@ -11,12 +11,16 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.st2i.cvfilter.model.Candidate;
 
 @Service
 public class CandidateParserService {
+
+    private static final Logger log = LoggerFactory.getLogger(CandidateParserService.class);
 
     private static final List<String> KNOWN_SKILLS = List.of(
             "java", "spring", "spring boot", "angular", "mongodb", "mysql", "sql",
@@ -32,7 +36,8 @@ public class CandidateParserService {
     );
 
     private static final List<String> KNOWN_LANGUAGES = List.of(
-            "english", "french", "arabic", "german", "spanish", "italian"
+            "english", "anglais", "french", "francais", "français", "arabic", "arabe",
+            "german", "spanish", "italian"
     );
 
     private static final List<String> LOCATION_KEYWORDS = List.of(
@@ -42,8 +47,25 @@ public class CandidateParserService {
             "maamoura", "beni khiar", "hammamet", "korba", "kelibia", "kelibia"
     );
 
+    private static final List<String> TRUSTED_TITLE_TERMS = List.of(
+            "developpeur", "développeur", "developer", "frontend", "front end", "backend", "back end",
+            "full stack", "fullstack", "software engineer", "engineer", "ingenieur", "java developer",
+            "stagiaire", "intern", "etudiant", "étudiant", "developpement web", "développement web",
+            "data analyst", "analyst"
+    );
+
     public Candidate parse(String fileName, String contentType, String text) {
         String cleanText = normalizeText(text);
+
+        // Debug: log first 40 lines of extracted text
+        if (log.isDebugEnabled()) {
+            String[] debugLines = cleanText.split("\\R");
+            log.debug("[PARSE] === First {} lines of extracted CV text ===",
+                    Math.min(debugLines.length, 40));
+            for (int i = 0; i < Math.min(debugLines.length, 40); i++) {
+                log.debug("[PARSE] L{}: {}", i, debugLines[i]);
+            }
+        }
 
         String fullName = extractName(cleanText);
         String email = extractEmail(cleanText);
@@ -53,6 +75,9 @@ public class CandidateParserService {
         Double years = extractYearsOfExperience(cleanText);
         String linkedinUrl = extractUrl(cleanText, "linkedin.com");
         String githubUrl = extractUrl(cleanText, "github.com");
+
+        log.debug("[PARSE] Results: name='{}' email='{}' phone='{}' address='{}' title='{}'",
+                fullName, email, phone, address, jobTitle);
 
         Candidate candidate = new Candidate();
         candidate.setFullName(fullName);
@@ -86,6 +111,191 @@ public class CandidateParserService {
         candidate.setCreatedAt(LocalDateTime.now());
 
         return candidate;
+    }
+
+    /**
+     * Returns the first {@code limit} normalized lines from the extracted text.
+     * Used by unit tests to inspect what the parser actually sees.
+     */
+    public List<String> parseDebugLines(String rawText, int limit) {
+        String[] lines = normalizeText(rawText).split("\\R");
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < Math.min(lines.length, limit); i++) {
+            result.add(lines[i]);
+        }
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // DEBUG EXTRACTION --- returns full instrumentation without touching parse()
+    // -------------------------------------------------------------------------
+
+    public record PhoneDebugResult(
+            String normalizedText,
+            java.util.List<String> candidates,
+            String accepted,
+            java.util.List<String> rejectedReasons
+    ) {}
+
+    public record AddressDebugResult(
+            java.util.List<String> candidates,
+            String accepted,
+            java.util.List<String> rejectedReasons
+    ) {}
+
+    /** Runs phone extraction with full per-candidate instrumentation. */
+    public PhoneDebugResult debugPhone(String rawText) {
+        String text = normalizeText(rawText);
+        String[] lines = text.split("\\R");
+
+        java.util.List<String> candidates = new ArrayList<>();
+        java.util.List<String> rejectedReasons = new ArrayList<>();
+        String accepted = null;
+
+        outer:
+        for (int lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            String line = sanitizeLine(lines[lineIdx]);
+            String normalized = normalizeForComparison(line);
+
+            if (line.isBlank()) continue;
+
+            String searchLine = TEL_LABEL_PATTERN.matcher(line).replaceFirst("").trim();
+            Matcher matcher = PHONE_PATTERN_TN.matcher(searchLine);
+
+            while (matcher.find()) {
+                String candidate = matcher.group(0).trim();
+                String digitsOnly = candidate.replaceAll("\\D", "");
+                String entry = "L" + lineIdx + ": normalizedText='" + normalized
+                        + "', candidate found: " + candidate
+                        + " (digits=" + digitsOnly + ", searchLine='" + searchLine + "')";
+                candidates.add(entry);
+
+                boolean validLength = digitsOnly.length() == 8
+                        || (digitsOnly.length() == 11 && digitsOnly.startsWith("216"))
+                        || (digitsOnly.length() == 13 && digitsOnly.startsWith("00216"));
+
+                if (!validLength) {
+                    rejectedReasons.add(entry + " -> REJECTED: digit count=" + digitsOnly.length()
+                            + " (expected 8, 11 with '216', or 13 with '00216')");
+                    continue;
+                }
+                if (looksLikeDate(candidate)) {
+                    rejectedReasons.add(entry + " -> REJECTED: looksLikeDate");
+                    continue;
+                }
+
+                accepted = normalizePhone(digitsOnly);
+                break outer;
+            }
+        }
+
+        return new PhoneDebugResult(text, candidates, accepted, rejectedReasons);
+    }
+
+    /** Runs address extraction with full per-candidate instrumentation. */
+    public AddressDebugResult debugAddress(String rawText) {
+        String text = normalizeText(rawText);
+        String[] lines = text.split("\\R");
+
+        java.util.List<String> candidates = new ArrayList<>();
+        java.util.List<String> rejectedReasons = new ArrayList<>();
+
+        String topProfileBest = null;
+        String labelLineBest = null;
+        String cityCountryBest = null;
+        String cityOnlyBest = null;
+        boolean inExcludedSection = false;
+        boolean addressCandidateSeen = false;
+
+        for (int lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            String line = sanitizeLine(lines[lineIdx]);
+            String normalized = normalizeForComparison(line);
+
+            if (line.isBlank()) continue;
+
+            if (isAddressProfileHeading(normalized)) {
+                inExcludedSection = false;
+                continue;
+            }
+            if (isAddressExcludedSectionHeading(normalized)) {
+                inExcludedSection = true;
+                continue;
+            }
+
+            boolean hasLocationKeyword = false;
+            for (String keyword : LOCATION_KEYWORDS) {
+                if (normalized.contains(keyword)) { hasLocationKeyword = true; break; }
+            }
+            if (!hasLocationKeyword && !normalized.contains("tunisie")) continue;
+
+            String entry = "L" + lineIdx + ": '" + line + "'";
+            candidates.add(entry);
+
+            boolean isInstitution = false;
+            String matchedExclusion = null;
+            for (String exclusion : ADDRESS_EXCLUSION_TERMS) {
+                if (normalized.contains(exclusion)) {
+                    isInstitution = true;
+                    matchedExclusion = exclusion;
+                    break;
+                }
+            }
+            if (isInstitution) {
+                rejectedReasons.add(entry + " -> REJECTED: institution term '" + matchedExclusion + "'");
+                continue;
+            }
+
+            boolean hasLabel = ADDRESS_LABEL_PATTERN.matcher(line).find();
+            if (inExcludedSection && !hasLabel && !hasContactNearby(lines, lineIdx)) {
+                rejectedReasons.add(entry + " -> REJECTED: education/experience section context");
+                continue;
+            }
+
+            String cleaned = stripAddressNoise(line);
+
+            if (cleaned.isBlank()) {
+                rejectedReasons.add(entry + " -> REJECTED: only phone/email content, nothing left");
+                continue;
+            }
+
+            if (hasLabel && labelLineBest == null) {
+                String withoutLabel = ADDRESS_LABEL_PATTERN.matcher(cleaned).replaceFirst("").trim();
+                String labeledLocation = extractCityCountry(withoutLabel);
+                labelLineBest = cleanLocation(labeledLocation == null ? withoutLabel : labeledLocation);
+                continue;
+            }
+
+            boolean hasTunisia = normalized.contains("tunisia") || normalized.contains("tunisie")
+                    || normalized.contains(", tn") || normalized.matches(".*\\btn\\b.*");
+            String cityCountry = extractCityCountry(cleaned);
+            if (hasTunisia && cityCountry != null) {
+                String cleanLocation = cleanLocation(cityCountry);
+                if (lineIdx < Math.min(lines.length, 25) && hasContactNearby(lines, lineIdx) && topProfileBest == null) {
+                    topProfileBest = cleanLocation;
+                    continue;
+                }
+                if (cityCountryBest == null) {
+                    cityCountryBest = cleanLocation;
+                }
+                continue;
+            }
+
+            if (cityOnlyBest == null) {
+                if (cleaned.length() > 50 || !BARE_CITY_PATTERN.matcher(cleaned).matches()
+                        || lineIdx >= Math.min(lines.length, 25) || !hasContactNearby(lines, lineIdx)) {
+                    rejectedReasons.add(entry + " -> REJECTED: uncertain bare city fallback");
+                    continue;
+                }
+                cityOnlyBest = cleanLocation(cleaned);
+            }
+        }
+
+        String accepted = topProfileBest != null ? topProfileBest
+                : labelLineBest != null ? labelLineBest
+                : cityCountryBest != null ? cityCountryBest
+                : cityOnlyBest;
+
+        return new AddressDebugResult(candidates, accepted, rejectedReasons);
     }
 
     private String normalizeText(String text) {
@@ -146,7 +356,7 @@ public class CandidateParserService {
 
         String normalized = normalizeForComparison(line);
 
-        if (isNoiseHeading(normalized) || containsEducationKeywords(normalized)) {
+        if (isNoiseHeading(normalized) || containsEducationKeywords(normalized) || containsTitleOrSkillKeywords(normalized)) {
             return false;
         }
 
@@ -185,7 +395,7 @@ public class CandidateParserService {
 
         String normalized = normalizeForComparison(line);
 
-        if (isNoiseHeading(normalized) || containsEducationKeywords(normalized)) {
+        if (isNoiseHeading(normalized) || containsEducationKeywords(normalized) || containsTitleOrSkillKeywords(normalized)) {
             return false;
         }
 
@@ -221,46 +431,117 @@ public class CandidateParserService {
         return matcher.find() ? matcher.group() : null;
     }
 
+    // -----------------------------------------------------------------------
+    // PHONE REGEX: supports +216, 00216, 216, and bare 8-digit Tunisian numbers
+    // with any separator (space, dot, dash) between digit groups.
+    // -----------------------------------------------------------------------
+    private static final Pattern PHONE_PATTERN_TN = Pattern.compile(
+        // Group 1: full international prefix (+216 / 00216 / 216) + 8 digits
+        "((?:\\+|00)216[\\s.\\-()]?\\d{2}[\\s.\\-()]?\\d{3}[\\s.\\-()]?\\d{3}" +
+        // Group 1 alt: bare international 216 prefix (no + or 00) + 8 digits
+        "|216[\\s.\\-()]?\\d{2}[\\s.\\-()]?\\d{3}[\\s.\\-()]?\\d{3}" +
+        // Group 1 alt: bare 8-digit number starting with Tunisian mobile prefix (2,4,5,7,9)
+        "|\\b[2459][0-9][\\s.\\-]\\d{3}[\\s.\\-]\\d{3}\\b" +
+        // Group 1 alt: compact 8-digit number starting with Tunisian mobile prefix
+        "|\\b[2459][0-9]\\d{6}\\b)"
+    );
+
+    private static final Pattern TEL_LABEL_PATTERN = Pattern.compile(
+        "(?i)(?:t[ée]l(?:[ée]phone)?|phone|mobile|gsm|portable|contact)\\s*[:\\-]?\\s*"
+    );
+
     private String extractPhone(String text) {
         String[] lines = text.split("\\R");
 
-        for (String rawLine : lines) {
-            String line = sanitizeLine(rawLine);
+        log.debug("[PHONE] Scanning {} lines for phone number", lines.length);
+
+        for (int lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            String line = sanitizeLine(lines[lineIdx]);
             String normalized = normalizeForComparison(line);
 
             if (line.isBlank()) {
                 continue;
             }
 
-            if (containsMonth(normalized) || normalized.contains("date") || normalized.contains("birth")) {
-                continue;
-            }
-
-            Matcher matcher = Pattern.compile("(\\+?\\d[\\d\\s\\-()]{7,18}\\d)").matcher(line);
+            // Strip tel: label before matching so label doesn't confuse word boundaries
+            String searchLine = TEL_LABEL_PATTERN.matcher(line).replaceFirst("").trim();
+            Matcher matcher = PHONE_PATTERN_TN.matcher(searchLine);
 
             while (matcher.find()) {
-                String candidate = matcher.group(1).trim();
+                String candidate = matcher.group(0).trim();
                 String digitsOnly = candidate.replaceAll("\\D", "");
 
-                if (digitsOnly.length() < 8 || digitsOnly.length() > 15) {
+                log.debug("[PHONE] Line {} normalizedText='{}'", lineIdx, normalized);
+                log.debug("[PHONE] candidate found: {}", candidate);
+                log.debug("[PHONE] Line {} candidate='{}' digits='{}'", lineIdx, candidate, digitsOnly);
+
+                // Validate digit count: 8 bare, 11 with 216, 13 with 00216
+                boolean validLength = digitsOnly.length() == 8
+                        || (digitsOnly.length() == 11 && digitsOnly.startsWith("216"))
+                        || (digitsOnly.length() == 13 && digitsOnly.startsWith("00216"));
+
+                if (!validLength) {
+                    log.debug("[PHONE]   REJECTED: unexpected digit count={}", digitsOnly.length());
                     continue;
                 }
 
                 if (looksLikeDate(candidate)) {
+                    log.debug("[PHONE]   REJECTED: looks like a date");
                     continue;
                 }
 
-                return candidate;
+                String acceptedPhone = normalizePhone(digitsOnly);
+                log.debug("[PHONE] acceptedPhone: {}", acceptedPhone);
+                return acceptedPhone;
             }
         }
 
+        log.debug("[PHONE] No valid phone found");
         return null;
     }
+
+    // -----------------------------------------------------------------------
+    // ADDRESS: institution/school names that must never be returned as address
+    // -----------------------------------------------------------------------
+    private static final List<String> ADDRESS_EXCLUSION_TERMS = List.of(
+            "iset", "lycee", "universite", "university", "education", "baccalaureat",
+            "licence", "institut", "ecole", "faculte", "college", "superieur",
+            "technologique", "nationale", "informatique", "specialite", "technique",
+            "st2i", "classe", "formation", "prive", "project", "projet", "stage",
+            "master", "bachelor", "ingenieur", "developpement", "faculty", "sciences",
+            "academic", "internship", "company", "gifty"
+    );
+
+    private static final Pattern ADDRESS_LABEL_PATTERN = Pattern.compile(
+        "(?i)(?:adresse|address|localisation|location|residence|domicile)\\s*[:\\-]?\\s*"
+    );
+
+    private static final String LOCATION_CITY_PATTERN =
+            "(?:Ben\\s+Arous|Maamoura|Nabeul|Tunis|Sousse|Sfax|Ariana|Monastir|Mahdia|Bizerte|Gabes|Gafsa|Tozeur|Medenine)";
+
+    private static final Pattern CITY_COUNTRY_PATTERN = Pattern.compile(
+            "(?i)\\b(?:" + LOCATION_CITY_PATTERN + "(?:\\s*,\\s*|\\s+))?"
+                    + LOCATION_CITY_PATTERN + "\\s*,\\s*(?:Tunisia|Tunisie)\\b"
+    );
+
+    private static final Pattern BARE_CITY_PATTERN = Pattern.compile(
+            "(?i)^(?:" + LOCATION_CITY_PATTERN + ")$"
+    );
 
     private String extractAddress(String text) {
         String[] lines = text.split("\\R");
 
-        for (String rawLine : lines) {
+        log.debug("[ADDRESS] Scanning {} lines for address", lines.length);
+
+        String topProfileBest = null;
+        String labelLineBest = null;
+        String cityCountryBest = null;
+        String cityOnlyBest = null;
+        boolean inExcludedSection = false;
+        boolean addressCandidateSeen = false;
+
+        for (int lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            String rawLine = lines[lineIdx];
             String line = sanitizeLine(rawLine);
             String normalized = normalizeForComparison(line);
 
@@ -268,6 +549,16 @@ public class CandidateParserService {
                 continue;
             }
 
+            if (isAddressProfileHeading(normalized)) {
+                inExcludedSection = false;
+                continue;
+            }
+            if (isAddressExcludedSectionHeading(normalized)) {
+                inExcludedSection = true;
+                continue;
+            }
+
+            // Check if line contains any known Tunisian city/country keyword
             boolean hasLocationKeyword = false;
             for (String keyword : LOCATION_KEYWORDS) {
                 if (normalized.contains(keyword)) {
@@ -276,29 +567,174 @@ public class CandidateParserService {
                 }
             }
 
-            if (!hasLocationKeyword) {
+            if (!hasLocationKeyword && !normalized.contains("tunisie")) {
                 continue;
             }
 
-            if (normalized.contains("iset")
-                    || normalized.contains("lycee")
-                    || normalized.contains("universite")
-                    || normalized.contains("university")
-                    || normalized.contains("education")
-                    || normalized.contains("baccalaureat")
-                    || normalized.contains("licence")) {
+            log.debug("[ADDRESS] Line {} candidate: {}", lineIdx, line);
+            addressCandidateSeen = true;
+
+            // Check if this line is an institution/school/project name
+            boolean isInstitution = false;
+            for (String exclusion : ADDRESS_EXCLUSION_TERMS) {
+                if (normalized.contains(exclusion)) {
+                    log.debug("[ADDRESS]   REJECTED: contains institution term '{}'", exclusion);
+                    isInstitution = true;
+                    break;
+                }
+            }
+            if (isInstitution) {
                 continue;
             }
 
-            line = line.replaceFirst("^\\+?\\d[\\d\\s\\-()]{7,18}\\d\\s*", "").trim();
-            line = line.replaceFirst("[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\s*", "").trim();
+            boolean hasLabel = ADDRESS_LABEL_PATTERN.matcher(line).find();
+            if (inExcludedSection && !hasLabel && !hasContactNearby(lines, lineIdx)) {
+                log.debug("[ADDRESS]   SKIP: education/experience section context");
+                continue;
+            }
 
-            if (!line.isBlank()) {
-                return line;
+            // Strip phone number and email if they appear on same line
+            String cleaned = stripAddressNoise(line);
+
+            if (cleaned.isBlank()) {
+                log.debug("[ADDRESS]   SKIP: only phone/email on this line, nothing left");
+                continue;
+            }
+
+            // Tier 1: label line (Adresse: / Location: / ...)
+            if (hasLabel && labelLineBest == null) {
+                String withoutLabel = ADDRESS_LABEL_PATTERN.matcher(cleaned).replaceFirst("").trim();
+                String labeledLocation = extractCityCountry(withoutLabel);
+                if (labeledLocation != null) {
+                    withoutLabel = labeledLocation;
+                }
+                if (!withoutLabel.isBlank()) {
+                    String cleanLocation = cleanLocation(withoutLabel);
+                    log.debug("[ADDRESS]   ACCEPTED (label line): {}", cleanLocation);
+                    labelLineBest = cleanLocation;
+                }
+                continue;
+            }
+
+            // Tier 2: city + Tunisia/Tunisie/TN on same line
+            boolean hasTunisia = normalized.contains("tunisia") || normalized.contains("tunisie")
+                    || normalized.contains(", tn") || normalized.matches(".*\\btn\\b.*");
+            String cityCountry = extractCityCountry(cleaned);
+            if (hasTunisia && cityCountry != null) {
+                String cleanLocation = cleanLocation(cityCountry);
+                if (lineIdx < Math.min(lines.length, 25) && hasContactNearby(lines, lineIdx) && topProfileBest == null) {
+                    log.debug("[ADDRESS]   ACCEPTED (top profile city+country): {}", cleanLocation);
+                    topProfileBest = cleanLocation;
+                    continue;
+                }
+                if (cityCountryBest == null) {
+                    log.debug("[ADDRESS]   ACCEPTED (city+country): {}", cleanLocation);
+                    cityCountryBest = cleanLocation;
+                }
+                continue;
+            }
+
+            // Tier 3: bare city name — only use if no better match found yet
+            if (cityOnlyBest == null) {
+                // Reject lines that are too long (likely a project/experience description)
+                if (cleaned.length() > 50 || !BARE_CITY_PATTERN.matcher(cleaned).matches()
+                        || lineIdx >= Math.min(lines.length, 25) || !hasContactNearby(lines, lineIdx)) {
+                    log.debug("[ADDRESS]   SKIP: uncertain bare city fallback");
+                    continue;
+                }
+                log.debug("[ADDRESS]   Noting as city-only fallback: {}", cleaned);
+                cityOnlyBest = cleanLocation(cleaned);
             }
         }
 
+        // Return best tier
+        if (topProfileBest != null) {
+            log.debug("[ADDRESS] Final selected (top profile): {}", topProfileBest);
+            return topProfileBest;
+        }
+        if (labelLineBest != null) {
+            log.debug("[ADDRESS] Final selected (label): {}", labelLineBest);
+            return labelLineBest;
+        }
+        if (cityCountryBest != null) {
+            log.debug("[ADDRESS] Final selected (city+country): {}", cityCountryBest);
+            return cityCountryBest;
+        }
+        if (cityOnlyBest != null) {
+            log.debug("[ADDRESS] Final selected (city-only fallback): {}", cityOnlyBest);
+            return cityOnlyBest;
+        }
+
+        if (addressCandidateSeen) {
+            log.warn("[ADDRESS] Location candidates found, but none looked safe enough to use as personal address");
+        } else {
+            log.debug("[ADDRESS] No location candidate found - returning null");
+        }
         return null;
+    }
+
+    private String extractCityCountry(String value) {
+        Matcher matcher = CITY_COUNTRY_PATTERN.matcher(value);
+        return matcher.find() ? matcher.group().trim() : null;
+    }
+
+    private String cleanLocation(String value) {
+        return value == null ? null : value
+                .replaceAll("\\s+", " ")
+                .replaceAll("\\s+,\\s+", ", ")
+                .replaceAll("^[,;|\\-\\s]+|[,;|\\-\\s]+$", "")
+                .trim();
+    }
+
+    private String stripAddressNoise(String line) {
+        return line
+                .replaceAll("(?:\\+|00)?216[\\s.\\-]?\\d{2}[\\s.\\-]?\\d{3}[\\s.\\-]?\\d{3}", "")
+                .replaceAll("[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", "")
+                .replaceAll("(?i)(?:https?://)?(?:www\\.)?(?:linkedin\\.com|github\\.com)/\\S+", "")
+                .replaceAll("\\s{2,}", " ")
+                .trim();
+    }
+
+    private boolean hasContactNearby(String[] lines, int lineIdx) {
+        int start = Math.max(0, lineIdx - 2);
+        int end = Math.min(lines.length - 1, lineIdx + 2);
+        for (int i = start; i <= end; i++) {
+            String line = sanitizeLine(lines[i]);
+            if (hasContactSignal(line, normalizeForComparison(line))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasContactSignal(String line, String normalized) {
+        return line.contains("@")
+                || normalized.contains("linkedin.com")
+                || normalized.contains("github.com")
+                || PHONE_PATTERN_TN.matcher(line).find();
+    }
+
+    private boolean isAddressExcludedSectionHeading(String normalized) {
+        return normalized.equals("experience")
+                || normalized.equals("experiences")
+                || normalized.equals("professional experience")
+                || normalized.equals("experience professionnelle")
+                || normalized.equals("work experience")
+                || normalized.equals("education")
+                || normalized.equals("formation")
+                || normalized.equals("academic background")
+                || normalized.equals("projects")
+                || normalized.equals("projets")
+                || normalized.equals("academic project")
+                || normalized.equals("certifications");
+    }
+
+    private boolean isAddressProfileHeading(String normalized) {
+        return normalized.equals("contact")
+                || normalized.equals("personal information")
+                || normalized.equals("informations personnelles")
+                || normalized.equals("profile")
+                || normalized.equals("summary");
     }
 
     private List<String> extractSkills(String text) {
@@ -329,23 +765,31 @@ public class CandidateParserService {
 
     private Double extractYearsOfExperience(String text) {
         String normalized = normalizeForComparison(text);
+        String experienceSection = extractExperienceSection(normalized);
+        String source = experienceSection == null || experienceSection.isBlank() ? normalized : experienceSection;
+
+        if (isStudentProfile(normalized) && !source.matches(".*\\b(experience|professional|professionnelle|work)\\b.*")) {
+            return 0.0;
+        }
 
         Matcher combinedMatcher = Pattern.compile(
-                "(\\d+(?:[\\.,]\\d+)?)\\s*\\+?\\s*(years|year|ans|an)\\s*(?:and|et)?\\s*(\\d+)?\\s*(mois|months|month)?"
-        ).matcher(normalized);
+                "\\b(?:experience|professional|professionnelle|work)?\\s*(\\d+(?:[\\.,]\\d+)?)\\s*\\+?\\s*(years|year|ans|an)\\s*(?:and|et)?\\s*(\\d{1,2})?\\s*(mois|months|month)?\\b"
+        ).matcher(source);
         if (combinedMatcher.find()) {
             double years = parseDecimal(combinedMatcher.group(1));
             int months = combinedMatcher.group(3) == null ? 0 : Integer.parseInt(combinedMatcher.group(3));
-            return roundExperience(years + (months / 12.0));
+            if (years <= 10 && months <= 11) {
+                return roundExperience(years + (months / 12.0));
+            }
         }
 
-        Matcher monthMatcher = Pattern.compile("(\\d+)\\s*(mois|months|month)").matcher(normalized);
+        Matcher monthMatcher = Pattern.compile("\\b(\\d{1,2})\\s*(mois|months|month)\\b").matcher(source);
         if (monthMatcher.find()) {
             int months = Integer.parseInt(monthMatcher.group(1));
-            return roundExperience(months / 12.0);
+            if (months <= 36) {
+                return roundExperience(months / 12.0);
+            }
         }
-
-        String experienceSection = extractExperienceSection(normalized);
 
         if (experienceSection != null && !experienceSection.isBlank()) {
             List<Integer> yearsFound = new ArrayList<>();
@@ -362,7 +806,9 @@ public class CandidateParserService {
 
                 if (minYear >= 2000 && minYear <= currentYear) {
                     int estimated = currentYear - minYear;
-                    return (double) Math.max(0, estimated);
+                    if (estimated <= 10 && !isStudentProfile(normalized)) {
+                        return (double) Math.max(0, estimated);
+                    }
                 }
             }
         }
@@ -469,24 +915,16 @@ public class CandidateParserService {
             return false;
         }
 
-        if (line.length() < 5 || line.length() > 80) {
+        if (line.length() < 5 || line.length() > 55) {
             return false;
         }
 
         String[] words = line.split("\\s+");
-        if (words.length > 10) {
+        if (words.length > 7) {
             return false;
         }
 
-        return normalized.contains("developer")
-                || normalized.contains("engineer")
-                || normalized.contains("intern")
-                || normalized.contains("stage")
-                || normalized.contains("student")
-                || normalized.contains("etudiant")
-                || normalized.contains("developpement")
-                || normalized.contains("web")
-                || normalized.contains("it");
+        return TRUSTED_TITLE_TERMS.stream().anyMatch(term -> normalized.contains(normalizeForComparison(term)));
     }
 
     private String extractHighestDegree(String text) {
@@ -505,6 +943,21 @@ public class CandidateParserService {
         if (normalized.contains("baccalaureat") || normalized.contains("baccalauréat")) return "Baccalaureat";
 
         return null;
+    }
+
+    private String normalizePhone(String digitsOnly) {
+        String local;
+        if (digitsOnly.startsWith("00216") && digitsOnly.length() == 13) {
+            local = digitsOnly.substring(5);
+        } else if (digitsOnly.startsWith("216") && digitsOnly.length() == 11) {
+            local = digitsOnly.substring(3);
+        } else {
+            local = digitsOnly;
+        }
+        if (local.length() != 8) {
+            return digitsOnly;
+        }
+        return "+216 " + local.substring(0, 2) + " " + local.substring(2, 5) + " " + local.substring(5);
     }
 
     private boolean containsSkill(String normalizedText, String skill) {
@@ -647,6 +1100,10 @@ public class CandidateParserService {
         return containsMonth(normalized);
     }
 
+    private boolean looksLikeExperienceDuration(String normalized) {
+        return normalized.matches(".*\\b\\d+\\s*(ans|an|years|year|mois|months|month)\\b.*");
+    }
+
     private boolean containsMonth(String normalizedText) {
         return normalizedText.contains("jan")
                 || normalizedText.contains("feb")
@@ -701,6 +1158,21 @@ public class CandidateParserService {
                 || normalized.contains("developpement des systemes")
                 || normalized.contains("lycee")
                 || normalized.contains("iset");
+    }
+
+    private boolean containsTitleOrSkillKeywords(String normalized) {
+        if (TRUSTED_TITLE_TERMS.stream().anyMatch(term -> normalized.contains(normalizeForComparison(term)))) {
+            return true;
+        }
+        return KNOWN_SKILLS.stream().anyMatch(skill -> normalized.contains(normalizeForComparison(skill)));
+    }
+
+    private boolean isStudentProfile(String normalized) {
+        return normalized.contains("etudiant")
+                || normalized.contains("étudiant")
+                || normalized.contains("student")
+                || normalized.contains("stagiaire")
+                || normalized.contains("intern");
     }
 
     private String sanitizeLine(String line) {
@@ -778,6 +1250,16 @@ public class CandidateParserService {
     private String formatLanguage(String value) {
         if (value == null || value.isBlank()) {
             return value;
+        }
+        String normalized = normalizeForComparison(value);
+        if (normalized.equals("anglais") || normalized.equals("english")) {
+            return "English";
+        }
+        if (normalized.equals("francais") || normalized.equals("french")) {
+            return "French";
+        }
+        if (normalized.equals("arabe") || normalized.equals("arabic")) {
+            return "Arabic";
         }
         return value.substring(0, 1).toUpperCase(Locale.ROOT)
                 + value.substring(1).toLowerCase(Locale.ROOT);

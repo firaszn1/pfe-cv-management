@@ -7,6 +7,7 @@ public class ScoreBreakdownResponse {
     private Double experienceMatch;
     private Double seniorityMatch;
     private Double titleMatch;
+    private Double semanticMatch;
 
     public ScoreBreakdownResponse() {
     }
@@ -23,6 +24,23 @@ public class ScoreBreakdownResponse {
         this.experienceMatch = experienceMatch;
         this.seniorityMatch = seniorityMatch;
         this.titleMatch = titleMatch;
+        this.semanticMatch = 0.0;
+    }
+
+    public ScoreBreakdownResponse(
+            Double globalScore,
+            Double skillsMatch,
+            Double experienceMatch,
+            Double seniorityMatch,
+            Double titleMatch,
+            Double semanticMatch
+    ) {
+        this.globalScore = globalScore;
+        this.skillsMatch = skillsMatch;
+        this.experienceMatch = experienceMatch;
+        this.seniorityMatch = seniorityMatch;
+        this.titleMatch = titleMatch;
+        this.semanticMatch = semanticMatch;
     }
 
     public Double getGlobalScore() {
@@ -63,5 +81,13 @@ public class ScoreBreakdownResponse {
 
     public void setTitleMatch(Double titleMatch) {
         this.titleMatch = titleMatch;
+    }
+
+    public Double getSemanticMatch() {
+        return semanticMatch;
+    }
+
+    public void setSemanticMatch(Double semanticMatch) {
+        this.semanticMatch = semanticMatch;
     }
 }

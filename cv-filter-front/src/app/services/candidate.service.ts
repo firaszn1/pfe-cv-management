@@ -31,6 +31,8 @@ export interface CandidateResponse {
   status: CandidateStatus;
   shortlisted: boolean;
   parsingWarnings: string[];
+  matchReasons: string[];
+  missingRequirements: string[];
 }
 
 export type CandidateStatus = 'NEEDS_REVIEW' | 'NEW' | 'REVIEWED' | 'SHORTLISTED' | 'INTERVIEW' | 'REJECTED' | 'HIRED';
@@ -41,6 +43,7 @@ export interface ScoreBreakdownResponse {
   experienceMatch: number;
   seniorityMatch: number;
   titleMatch: number;
+  semanticMatch?: number | null;
 }
 
 export interface UploadCandidateResponse {
@@ -272,6 +275,8 @@ export class CandidateService {
       projectEntries: Array.isArray(candidate?.projectEntries) ? candidate.projectEntries : [],
       certifications: Array.isArray(candidate?.certifications) ? candidate.certifications : [],
       parsingWarnings: Array.isArray(candidate?.parsingWarnings) ? candidate.parsingWarnings : [],
+      matchReasons: Array.isArray(candidate?.matchReasons) ? candidate.matchReasons : [],
+      missingRequirements: Array.isArray(candidate?.missingRequirements) ? candidate.missingRequirements : [],
       status: candidate?.status || 'NEW',
       shortlisted: candidate?.shortlisted === true,
       aiMatchScore: candidate?.aiMatchScore ?? null,

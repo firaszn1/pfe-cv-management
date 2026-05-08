@@ -33,6 +33,8 @@ public class CandidateResponse {
     private String status;
     private Boolean shortlisted;
     private List<String> parsingWarnings = new ArrayList<>();
+    private List<String> matchReasons = new ArrayList<>();
+    private List<String> missingRequirements = new ArrayList<>();
 
     public CandidateResponse() {
     }
@@ -303,5 +305,21 @@ public class CandidateResponse {
 
     public void setParsingWarnings(List<String> parsingWarnings) {
         this.parsingWarnings = parsingWarnings == null ? new ArrayList<>() : parsingWarnings;
+    }
+
+    public List<String> getMatchReasons() {
+        return matchReasons;
+    }
+
+    public void setMatchReasons(List<String> matchReasons) {
+        this.matchReasons = matchReasons == null ? new ArrayList<>() : matchReasons;
+    }
+
+    public List<String> getMissingRequirements() {
+        return missingRequirements;
+    }
+
+    public void setMissingRequirements(List<String> missingRequirements) {
+        this.missingRequirements = missingRequirements == null ? new ArrayList<>() : missingRequirements;
     }
 }

@@ -321,10 +321,12 @@ public class CandidateService {
         if (queryEmbedding.isEmpty()) {
             return candidates.stream()
                     .map(candidate -> {
-                        ScoreBreakdownResponse breakdown = candidateScoringService.score(candidate, signals);
+                        ScoreBreakdownResponse breakdown = candidateScoringService.score(candidate, signals, 0.0);
                         CandidateResponse response = toResponse(candidate);
                         response.setAiMatchScore(breakdown.getGlobalScore());
                         response.setScoreBreakdown(breakdown);
+                        response.setMatchReasons(candidateScoringService.matchReasons(candidate, signals));
+                        response.setMissingRequirements(candidateScoringService.missingRequirements(candidate, signals));
                         return response;
                     })
                     .sorted(Comparator.comparing(
@@ -346,9 +348,9 @@ public class CandidateService {
                 .map(candidate -> {
                     double semanticSimilarity = cosineSimilarity(queryEmbedding, candidate.getEmbedding());
                     double semanticPercent = convertSimilarityToPercent(semanticSimilarity);
-                    double structuredPercent = candidateScoringService.score(candidate, signals).getGlobalScore();
+                    double structuredPercent = candidateScoringService.score(candidate, signals, semanticPercent).getGlobalScore();
 
-                    double rawScore = (semanticPercent * 0.35) + (structuredPercent * 0.65);
+                    double rawScore = structuredPercent;
 
                     return new ScoredCandidate(candidate, rawScore);
                 })
@@ -361,7 +363,11 @@ public class CandidateService {
                 .map(item -> {
                     CandidateResponse response = toResponse(item.getCandidate());
                     response.setAiMatchScore(roundScore(item.getRawScore()));
-                    response.setScoreBreakdown(candidateScoringService.score(item.getCandidate(), signals));
+                    double semanticSimilarity = cosineSimilarity(queryEmbedding, item.getCandidate().getEmbedding());
+                    double semanticPercent = convertSimilarityToPercent(semanticSimilarity);
+                    response.setScoreBreakdown(candidateScoringService.score(item.getCandidate(), signals, semanticPercent));
+                    response.setMatchReasons(candidateScoringService.matchReasons(item.getCandidate(), signals));
+                    response.setMissingRequirements(candidateScoringService.missingRequirements(item.getCandidate(), signals));
                     return response;
                 })
                 .collect(Collectors.toList());
@@ -455,6 +461,8 @@ public class CandidateService {
         response.setStatus(candidate.getStatus() == null || candidate.getStatus().isBlank() ? "NEW" : candidate.getStatus());
         response.setShortlisted(Boolean.TRUE.equals(candidate.getShortlisted()));
         response.setParsingWarnings(buildParsingWarnings(candidate));
+        response.setMatchReasons(List.of());
+        response.setMissingRequirements(List.of());
         return response;
     }
 
@@ -583,13 +591,22 @@ public class CandidateService {
     private List<String> buildParsingWarnings(Candidate candidate) {
         List<String> warnings = new ArrayList<>();
         if (isBlankOrUnknown(candidate.getFullName())) {
-            warnings.add("Missing full name");
+            warnings.add("Name unknown");
         }
         if (isBlankOrUnknown(candidate.getEmail())) {
             warnings.add("Missing email");
         }
+        if (isBlankOrUnknown(candidate.getPhone())) {
+            warnings.add("Phone missing or untrusted");
+        }
         if (isBlankOrUnknown(candidate.getCurrentJobTitle())) {
-            warnings.add("Missing current job title");
+            warnings.add("Job title missing or untrusted");
+        }
+        if (isBlankOrUnknown(candidate.getAddress())) {
+            warnings.add("Address uncertain");
+        }
+        if (candidate.getYearsOfExperience() == null) {
+            warnings.add("Experience uncertain");
         }
         if (candidate.getSkills() == null || candidate.getSkills().isEmpty()) {
             warnings.add("Missing skills");

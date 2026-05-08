@@ -1835,7 +1835,8 @@ export class CandidatesComponent {
       { label: 'Skills', value: Math.round(breakdown.skillsMatch || 0) },
       { label: 'Experience', value: Math.round(breakdown.experienceMatch || 0) },
       { label: 'Seniority', value: Math.round(breakdown.seniorityMatch || 0) },
-      { label: 'Title', value: Math.round(breakdown.titleMatch || 0) }
+      { label: 'Title', value: Math.round(breakdown.titleMatch || 0) },
+      { label: 'Semantic', value: Math.round(breakdown.semanticMatch || 0) }
     ];
   }
 

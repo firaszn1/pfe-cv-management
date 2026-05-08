@@ -17,7 +17,8 @@ public class CandidateScoringService {
     private static final Set<String> KNOWN_SKILLS = Set.of(
             "java", "react", "angular", "spring boot", "spring", "node", "node.js",
             "mysql", "sql", "python", "javascript", "typescript", "html", "css", "javafx",
-            "mongodb", "docker", "git", "keycloak", "rest", "api"
+            "mongodb", "docker", "git", "keycloak", "rest", "api", "php", "laravel",
+            "data", "excel", "power bi"
     );
 
     private static final Set<String> KNOWN_TITLES = Set.of(
@@ -29,7 +30,8 @@ public class CandidateScoringService {
         String normalized = normalize(text);
         QuerySignals signals = new QuerySignals();
 
-        if (normalized.contains("junior") || normalized.contains("intern")) {
+        if (normalized.contains("junior") || normalized.contains("intern") || normalized.contains("stagiaire")
+                || normalized.contains("student") || normalized.contains("etudiant")) {
             signals.setSeniority("Junior");
         } else if (normalized.contains("senior")) {
             signals.setSeniority("Senior");
@@ -42,6 +44,15 @@ public class CandidateScoringService {
                 signals.getSkills().add(skill);
             }
         }
+        if (normalized.contains("frontend") || normalized.contains("front end")) {
+            signals.getSkills().add("javascript");
+        }
+        if (normalized.contains("react")) {
+            signals.getSkills().add("react");
+        }
+        if (normalized.contains("backend") && normalized.contains("java")) {
+            signals.getSkills().add("spring boot");
+        }
 
         for (String title : KNOWN_TITLES) {
             if (normalized.contains(title)) {
@@ -53,24 +64,65 @@ public class CandidateScoringService {
     }
 
     public ScoreBreakdownResponse score(Candidate candidate, QuerySignals signals) {
+        return score(candidate, signals, 0.0);
+    }
+
+    public ScoreBreakdownResponse score(Candidate candidate, QuerySignals signals, double semanticMatch) {
         double skills = scoreSkills(candidate, signals);
         double experience = scoreExperience(candidate, signals);
         double seniority = scoreSeniority(candidate, signals);
         double title = scoreTitle(candidate, signals);
-        double global = (skills * 0.40) + (experience * 0.25) + (seniority * 0.20) + (title * 0.15);
+        double semantic = clamp(semanticMatch);
+        double global = (skills * 0.40) + (title * 0.20) + (seniority * 0.20) + (experience * 0.15) + (semantic * 0.05);
+
+        if (!signals.getSkills().isEmpty() && skills < 50.0) {
+            global *= 0.65;
+        }
+        if (signals.getSeniority() != null && seniority == 0.0) {
+            global *= 0.55;
+        }
+
         return new ScoreBreakdownResponse(
                 round(global),
                 round(skills),
                 round(experience),
                 round(seniority),
-                round(title)
+                round(title),
+                round(semantic)
         );
     }
 
     public boolean matchesRequiredSeniority(Candidate candidate, QuerySignals signals) {
-        return signals.getSeniority() == null
-                || (candidate.getSeniorityLevel() != null
-                && candidate.getSeniorityLevel().equalsIgnoreCase(signals.getSeniority()));
+        return true;
+    }
+
+    public List<String> matchReasons(Candidate candidate, QuerySignals signals) {
+        List<String> reasons = new ArrayList<>();
+        for (String skill : matchedSkills(candidate, signals)) {
+            reasons.add("Matched " + formatSkill(skill));
+        }
+        if (signals.getSeniority() != null && candidate.getSeniorityLevel() != null
+                && candidate.getSeniorityLevel().equalsIgnoreCase(signals.getSeniority())) {
+            reasons.add("Candidate is " + candidate.getSeniorityLevel());
+        }
+        if (!signals.getTitles().isEmpty() && scoreTitle(candidate, signals) >= 80.0) {
+            reasons.add("Job title matches requested role");
+        }
+        return reasons;
+    }
+
+    public List<String> missingRequirements(Candidate candidate, QuerySignals signals) {
+        List<String> missing = new ArrayList<>();
+        for (String skill : signals.getSkills()) {
+            if (!matchedSkills(candidate, signals).contains(skill)) {
+                missing.add("No " + formatSkill(skill) + " detected");
+            }
+        }
+        if (signals.getSeniority() != null && (candidate.getSeniorityLevel() == null
+                || !candidate.getSeniorityLevel().equalsIgnoreCase(signals.getSeniority()))) {
+            missing.add("Seniority is not " + signals.getSeniority());
+        }
+        return missing;
     }
 
     private double scoreSkills(Candidate candidate, QuerySignals signals) {
@@ -79,9 +131,7 @@ public class CandidateScoringService {
         }
 
         List<String> candidateSkills = candidate.getSkills() == null ? List.of() : candidate.getSkills();
-        long matched = signals.getSkills().stream()
-                .filter(skill -> candidateSkills.stream().anyMatch(candidateSkill -> contains(candidateSkill, skill)))
-                .count();
+        long matched = matchedSkills(candidate, signals).size();
         return ((double) matched / signals.getSkills().size()) * 100.0;
     }
 
@@ -102,7 +152,10 @@ public class CandidateScoringService {
             return years < 2.0 ? 55.0 : 80.0;
         }
         if ("Junior".equalsIgnoreCase(seniority)) {
-            return years <= 2.0 ? 100.0 : 75.0;
+            if (years <= 1.5) {
+                return 100.0;
+            }
+            return years <= 2.5 ? 80.0 : 35.0;
         }
 
         return clamp(55.0 + (years * 8.0));
@@ -115,7 +168,16 @@ public class CandidateScoringService {
         if (candidate.getSeniorityLevel() == null) {
             return 30.0;
         }
-        return candidate.getSeniorityLevel().equalsIgnoreCase(signals.getSeniority()) ? 100.0 : 0.0;
+        if (candidate.getSeniorityLevel().equalsIgnoreCase(signals.getSeniority())) {
+            return 100.0;
+        }
+        if ("Senior".equalsIgnoreCase(signals.getSeniority()) && "Mid".equalsIgnoreCase(candidate.getSeniorityLevel())) {
+            return 45.0;
+        }
+        if ("Junior".equalsIgnoreCase(signals.getSeniority()) && "Mid".equalsIgnoreCase(candidate.getSeniorityLevel())) {
+            return 35.0;
+        }
+        return 0.0;
     }
 
     private double scoreTitle(Candidate candidate, QuerySignals signals) {
@@ -126,9 +188,41 @@ public class CandidateScoringService {
             return 25.0;
         }
         return signals.getTitles().stream()
-                .anyMatch(title -> contains(candidate.getCurrentJobTitle(), title))
+                .anyMatch(title -> titleMatches(candidate.getCurrentJobTitle(), title))
                 ? 100.0
                 : 35.0;
+    }
+
+    private Set<String> matchedSkills(Candidate candidate, QuerySignals signals) {
+        List<String> candidateSkills = candidate.getSkills() == null ? List.of() : candidate.getSkills();
+        Set<String> matched = new LinkedHashSet<>();
+        for (String skill : signals.getSkills()) {
+            if (candidateSkills.stream().anyMatch(candidateSkill -> contains(candidateSkill, skill))) {
+                matched.add(skill);
+            }
+        }
+        return matched;
+    }
+
+    private boolean titleMatches(String candidateTitle, String queryTitle) {
+        String title = normalize(candidateTitle);
+        String query = normalize(queryTitle);
+        return title.contains(query)
+                || (query.contains("frontend") && title.contains("front"))
+                || (query.contains("backend") && title.contains("back"))
+                || (query.contains("intern") && (title.contains("intern") || title.contains("stagiaire") || title.contains("student")));
+    }
+
+    private String formatSkill(String value) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        if ("spring boot".equals(value)) return "Spring Boot";
+        if ("javascript".equals(value)) return "JavaScript";
+        if ("typescript".equals(value)) return "TypeScript";
+        if ("mysql".equals(value)) return "MySQL";
+        if ("node.js".equals(value)) return "Node.js";
+        return value.substring(0, 1).toUpperCase(Locale.ROOT) + value.substring(1);
     }
 
     private boolean contains(String value, String term) {
