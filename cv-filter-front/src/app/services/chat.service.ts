@@ -10,12 +10,24 @@ export interface ChatRequest {
   selectedCandidateId?: string | null;
 }
 
+export interface InterviewKitResponse {
+  candidateId: string;
+  candidateName: string;
+  seniorityLevel: string;
+  jobTitle: string;
+  technical: string[];
+  project: string[];
+  hr: string[];
+  clarification: string[];
+}
+
 export interface ChatCandidateResponse {
   candidate: CandidateResponse;
   explanation: string;
   reasons: string[];
   strengths: string[];
   weaknesses: string[];
+  hiringRecommendation?: string;
 }
 
 export interface ChatResponse {
@@ -25,6 +37,8 @@ export interface ChatResponse {
   explanation: string;
   topCandidate: ChatCandidateResponse | null;
   candidates: ChatCandidateResponse[];
+  suggestedActions: string[];
+  interviewKit?: InterviewKitResponse;
 }
 
 @Injectable({

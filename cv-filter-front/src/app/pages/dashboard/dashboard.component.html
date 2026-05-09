@@ -1,91 +1,263 @@
 <div class="dashboard-page">
+
+  <!-- Hero Banner -->
   <div class="hero-card">
-    <div class="hero-icon">✦</div>
-    <div>
+    <div class="hero-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+    </div>
+    <div class="hero-body">
       <p class="eyebrow">Recruitment Intelligence</p>
-      <h2>Smart hiring starts here</h2>
+      <h2>Smart hiring, smarter decisions</h2>
       <p class="hero-text">
         Track candidate flow, seniority distribution, and the most demanded skills
-        across your recruitment database.
+        across your recruitment database in real time.
       </p>
+    </div>
+    <div class="hero-actions">
+      <a routerLink="/upload" class="hero-btn primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+        Upload CV
+      </a>
+      <a routerLink="/candidates" class="hero-btn secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        View All
+      </a>
     </div>
   </div>
 
   @if (stats) {
+    <!-- Stats Grid -->
     <div class="stats-grid">
-      <div class="stat-card primary">
-        <div class="stat-icon">◎</div>
-        <p>Total Candidates</p>
-        <h3>{{ stats.totalCandidates }}</h3>
+      <div class="stat-card accent">
+        <div class="stat-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <p class="stat-label">Total Candidates</p>
+          <h3 class="stat-value">{{ stats.totalCandidates }}</h3>
+          <span class="stat-sub">In talent pool</span>
+        </div>
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon">J</div>
-        <p>Junior Profiles</p>
-        <h3>{{ stats.juniorCount }}</h3>
+        <div class="stat-icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <p class="stat-label">Junior Profiles</p>
+          <h3 class="stat-value">{{ stats.juniorCount }}</h3>
+          <span class="stat-sub">0–2 yrs exp.</span>
+        </div>
+        <div class="stat-chart">
+          <div class="mini-bar" [style.height.%]="getMiniBarWidth(stats.juniorCount, stats.totalCandidates)" style="background: #4ade80"></div>
+        </div>
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon">M</div>
-        <p>Mid Profiles</p>
-        <h3>{{ stats.midCount }}</h3>
+        <div class="stat-icon amber">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <p class="stat-label">Mid Profiles</p>
+          <h3 class="stat-value">{{ stats.midCount }}</h3>
+          <span class="stat-sub">2–5 yrs exp.</span>
+        </div>
+        <div class="stat-chart">
+          <div class="mini-bar" [style.height.%]="getMiniBarWidth(stats.midCount, stats.totalCandidates)" style="background: #fbbf24"></div>
+        </div>
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon">S</div>
-        <p>Senior Profiles</p>
-        <h3>{{ stats.seniorCount }}</h3>
+        <div class="stat-icon purple">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <p class="stat-label">Senior Profiles</p>
+          <h3 class="stat-value">{{ stats.seniorCount }}</h3>
+          <span class="stat-sub">5+ yrs exp.</span>
+        </div>
+        <div class="stat-chart">
+          <div class="mini-bar" [style.height.%]="getMiniBarWidth(stats.seniorCount, stats.totalCandidates)" style="background: #a78bfa"></div>
+        </div>
       </div>
     </div>
 
+    <!-- Main Content Grid -->
     <div class="two-col">
+      <!-- Skills Panel -->
       <div class="panel">
         <div class="panel-head">
-          <h3>Top Skills</h3>
-          <span>Most frequent skills in your CV database</span>
+          <div>
+            <h3>Top Skills</h3>
+            <span>Most frequent across your CV database</span>
+          </div>
+          <div class="panel-badge">{{ stats.topSkills.length }} skills</div>
         </div>
 
         @if (stats.topSkills.length === 0) {
-          <p class="muted">No skills available yet.</p>
-        }
-
-        @for (item of stats.topSkills; track item.skill) {
-          <div class="skill-row">
-            <div class="skill-label">{{ item.skill }}</div>
-            <div class="skill-bar-wrap">
-              <div class="skill-bar" [style.width.%]="getBarWidth(item.count)"></div>
-            </div>
-            <div class="skill-count">{{ item.count }}</div>
+          <div class="empty-state">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+            <p>No skill data yet. Upload some CVs to get started.</p>
           </div>
         }
+
+        <div class="skills-list">
+          @for (item of stats.topSkills; track item.skill; let i = $index) {
+            <div class="skill-row">
+              <span class="skill-rank">#{{ i + 1 }}</span>
+              <div class="skill-label">{{ item.skill }}</div>
+              <div class="skill-bar-wrap">
+                <div class="skill-bar" [style.width.%]="getBarWidth(item.count)"></div>
+              </div>
+              <div class="skill-count">{{ item.count }}</div>
+            </div>
+          }
+        </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h3>Quick Insight</h3>
-          <span>Simple overview of your current dataset</span>
+      <!-- Right Column -->
+      <div class="right-col">
+        <!-- Seniority Distribution -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Seniority Mix</h3>
+              <span>Distribution across talent pool</span>
+            </div>
+          </div>
+          <div class="seniority-bars">
+            <div class="seniority-item">
+              <div class="seniority-info">
+                <span class="dot green"></span>
+                <span>Junior</span>
+                <strong>{{ getPercent(stats.juniorCount) }}%</strong>
+                <small>{{ stats.juniorCount }}</small>
+              </div>
+              <div class="seniority-track">
+                <div class="seniority-fill green" [style.width.%]="getPercent(stats.juniorCount)"></div>
+              </div>
+            </div>
+            <div class="seniority-item">
+              <div class="seniority-info">
+                <span class="dot amber"></span>
+                <span>Mid-level</span>
+                <strong>{{ getPercent(stats.midCount) }}%</strong>
+                <small>{{ stats.midCount }}</small>
+              </div>
+              <div class="seniority-track">
+                <div class="seniority-fill amber" [style.width.%]="getPercent(stats.midCount)"></div>
+              </div>
+            </div>
+            <div class="seniority-item">
+              <div class="seniority-info">
+                <span class="dot purple"></span>
+                <span>Senior</span>
+                <strong>{{ getPercent(stats.seniorCount) }}%</strong>
+                <small>{{ stats.seniorCount }}</small>
+              </div>
+              <div class="seniority-track">
+                <div class="seniority-fill purple" [style.width.%]="getPercent(stats.seniorCount)"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="insight-box">
-          <h4>AI Search Tip</h4>
-          <p>
-            Compare smart search results with manual filters to see whether semantic ranking
-            is truly helping HR decisions.
-          </p>
-        </div>
+        <!-- Quick Actions Panel -->
+        <div class="panel actions-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Quick Actions</h3>
+              <span>Common tasks and workflows</span>
+            </div>
+          </div>
+          <div class="action-list">
+            <a routerLink="/upload" class="action-item">
+              <div class="action-icon upload-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+                  <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+                </svg>
+              </div>
+              <div class="action-body">
+                <strong>Upload a CV</strong>
+                <p>Add a new candidate to the talent pool</p>
+              </div>
+              <svg class="action-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </a>
 
-        <div class="insight-box secondary">
-          <h4>Data Quality Tip</h4>
-          <p>
-            Editing candidate profiles after upload improves the quality of both filtering and
-            semantic search results.
-          </p>
+            <a routerLink="/candidates" class="action-item">
+              <div class="action-icon search-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </div>
+              <div class="action-body">
+                <strong>AI Smart Search</strong>
+                <p>Match candidates with natural language</p>
+              </div>
+              <svg class="action-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </a>
+
+            <a routerLink="/candidates" class="action-item">
+              <div class="action-icon star-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+              </div>
+              <div class="action-body">
+                <strong>View Shortlist</strong>
+                <p>Review your starred candidates</p>
+              </div>
+              <svg class="action-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </a>
+          </div>
         </div>
       </div>
     </div>
   } @else {
+    <!-- Loading skeleton -->
+    <div class="stats-grid">
+      @for (i of [1,2,3,4]; track i) {
+        <div class="stat-card skeleton-card">
+          <div class="sk sk-icon"></div>
+          <div class="sk-body">
+            <div class="sk sk-label"></div>
+            <div class="sk sk-value"></div>
+          </div>
+        </div>
+      }
+    </div>
     <div class="panel">
-      <p class="muted">Loading dashboard...</p>
+      <div class="sk sk-block"></div>
     </div>
   }
+
 </div>

@@ -11,6 +11,8 @@ public class ChatResponse {
     private String explanation;
     private ChatCandidateResponse topCandidate;
     private List<ChatCandidateResponse> candidates = new ArrayList<>();
+    private List<String> suggestedActions = new ArrayList<>();
+    private InterviewKitResponse interviewKit;
 
     public String getConversationId() {
         return conversationId;
@@ -58,5 +60,21 @@ public class ChatResponse {
 
     public void setCandidates(List<ChatCandidateResponse> candidates) {
         this.candidates = candidates;
+    }
+
+    public List<String> getSuggestedActions() {
+        return suggestedActions;
+    }
+
+    public void setSuggestedActions(List<String> suggestedActions) {
+        this.suggestedActions = suggestedActions;
+    }
+
+    public InterviewKitResponse getInterviewKit() {
+        return interviewKit;
+    }
+
+    public void setInterviewKit(InterviewKitResponse interviewKit) {
+        this.interviewKit = interviewKit;
     }
 }

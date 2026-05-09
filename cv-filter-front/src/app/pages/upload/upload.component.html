@@ -1,37 +1,203 @@
 <div class="upload-page">
+
+  <!-- Header -->
   <div class="header-card">
-    <p class="eyebrow">Candidate Intake</p>
-    <h2>Upload a new CV</h2>
-    <p>
-      Import PDF or DOCX resumes and let the platform extract, structure,
-      and store candidate data automatically.
-    </p>
+    <div class="header-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="16 16 12 12 8 16"/>
+        <line x1="12" y1="12" x2="12" y2="21"/>
+        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+      </svg>
+    </div>
+    <div class="header-body">
+      <p class="eyebrow">Candidate Intake</p>
+      <h2>Upload a new CV</h2>
+      <p>Import PDF or DOCX resumes and let the platform extract, structure,
+        and store candidate data automatically.</p>
+    </div>
   </div>
 
+  <!-- Upload Card -->
   <div class="upload-card">
-    <div class="upload-zone">
-      <div class="upload-icon">☁</div>
-      <h3>Select a resume</h3>
-      <p>Supported formats: PDF, DOCX</p>
 
-      <input type="file" (change)="onFileSelected($event)" accept=".pdf,.docx" />
+    <!-- Drop Zone -->
+    <div
+      class="upload-zone"
+      [class.drag-over]="isDragging"
+      [class.has-file]="selectedFile"
+      [class.uploading]="loading"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave($event)"
+      (drop)="onDrop($event)"
+      (click)="fileInput.click()"
+      role="button"
+      tabindex="0"
+      aria-label="Click or drag a file to upload"
+      id="upload-drop-zone"
+    >
+      <input
+        #fileInput
+        type="file"
+        (change)="onFileSelected($event)"
+        accept=".pdf,.docx"
+        style="display:none"
+        id="cv-file-input"
+      />
 
-      @if (selectedFile) {
-        <div class="file-preview">
-          <strong>Selected file</strong>
-          <span>{{ selectedFile.name }}</span>
+      @if (loading) {
+        <!-- Uploading state -->
+        <div class="zone-content">
+          <div class="upload-spinner">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
+          </div>
+          <h3>Uploading & Parsing…</h3>
+          <p>Extracting skills, experience and contact data from your CV</p>
+          <div class="progress-bar"><div class="progress-fill"></div></div>
+        </div>
+
+      } @else if (selectedFile) {
+        <!-- File selected state -->
+        <div class="zone-content">
+          <div class="file-icon">
+            @if (isDocx(selectedFile.name)) {
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+            } @else {
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+              </svg>
+            }
+          </div>
+          <h3>{{ selectedFile.name }}</h3>
+          <p class="file-meta">
+            <span class="file-type-badge">{{ fileExtension(selectedFile.name) }}</span>
+            {{ formatSize(selectedFile.size) }}
+          </p>
+          <p class="change-hint">Click to change file</p>
+        </div>
+
+      } @else {
+        <!-- Default idle state -->
+        <div class="zone-content">
+          <div class="cloud-icon" [class.active]="isDragging">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 16 12 12 8 16"/>
+              <line x1="12" y1="12" x2="12" y2="21"/>
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+            </svg>
+          </div>
+          <h3>{{ isDragging ? 'Drop your CV here' : 'Drag & drop or click to browse' }}</h3>
+          <p>Supported formats: <strong>PDF</strong> and <strong>DOCX</strong></p>
+          <div class="format-badges">
+            <span class="format-badge">PDF</span>
+            <span class="format-badge">DOCX</span>
+          </div>
         </div>
       }
+    </div>
 
-      <button class="upload-btn" (click)="upload()" [disabled]="loading">
-        {{ loading ? 'Uploading...' : 'Upload CV' }}
+    <!-- Action Bar -->
+    <div class="upload-actions">
+      <button
+        class="upload-btn"
+        (click)="upload()"
+        [disabled]="loading || !selectedFile"
+        id="btn-upload-cv"
+      >
+        @if (loading) {
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="spin-icon">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+          Uploading…
+        } @else {
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+          </svg>
+          Upload CV
+        }
       </button>
+
+      @if (selectedFile && !loading) {
+        <button class="clear-btn" (click)="clearFile($event)" id="btn-clear-file">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          Clear
+        </button>
+      }
     </div>
 
     @if (message) {
-      <div class="message-box">
+      <div class="message-box" [class.error]="isErrorMessage">
+        @if (isErrorMessage) {
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        } @else {
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        }
         {{ message }}
       </div>
     }
   </div>
+
+  <!-- Guidelines -->
+  <div class="guidelines-card">
+    <h4>Upload Guidelines</h4>
+    <div class="guidelines-grid">
+      <div class="guideline-item">
+        <div class="guideline-icon success">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <strong>PDF or DOCX only</strong>
+          <p>Other formats are not accepted.</p>
+        </div>
+      </div>
+      <div class="guideline-item">
+        <div class="guideline-icon success">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <strong>One CV at a time</strong>
+          <p>Upload resumes one by one for best parsing results.</p>
+        </div>
+      </div>
+      <div class="guideline-item">
+        <div class="guideline-icon warning">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <div>
+          <strong>Review after upload</strong>
+          <p>You'll be redirected to verify and correct extracted data.</p>
+        </div>
+      </div>
+      <div class="guideline-item">
+        <div class="guideline-icon info">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div>
+          <strong>AI-powered parsing</strong>
+          <p>Skills, experience, and contact info are auto-extracted.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>

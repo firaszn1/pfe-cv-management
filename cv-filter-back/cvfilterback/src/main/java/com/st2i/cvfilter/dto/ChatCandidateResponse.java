@@ -10,6 +10,7 @@ public class ChatCandidateResponse {
     private List<String> reasons = new ArrayList<>();
     private List<String> strengths = new ArrayList<>();
     private List<String> weaknesses = new ArrayList<>();
+    private String hiringRecommendation;
 
     public CandidateResponse getCandidate() {
         return candidate;
@@ -49,5 +50,13 @@ public class ChatCandidateResponse {
 
     public void setWeaknesses(List<String> weaknesses) {
         this.weaknesses = weaknesses;
+    }
+
+    public String getHiringRecommendation() {
+        return hiringRecommendation;
+    }
+
+    public void setHiringRecommendation(String hiringRecommendation) {
+        this.hiringRecommendation = hiringRecommendation;
     }
 }
